@@ -1,0 +1,1 @@
+"""Point d'entrée Gradio réservé à l'implémentation future de l'UI."""
