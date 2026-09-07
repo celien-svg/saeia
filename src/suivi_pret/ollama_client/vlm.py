@@ -471,14 +471,17 @@ class OllamaWrapper:
         )
 
         try:
-            # Exécute la requête avec timeout.
             with urllib.request.urlopen(request, timeout=self._timeout_s) as response:
-                raw: bytes = response.read()  # Lit tout le corps
+                raw: bytes = response.read()
+        except urllib.error.HTTPError as e:
+            # Erreur HTTP (4xx/5xx) : Ollama renvoie souvent un JSON avec le détail
+            error_body = e.read().decode("utf-8", errors="replace")
+            raise OllamaResponseError(
+                f"Erreur HTTP {e.code} depuis {url}: {error_body}"
+            ) from e
         except urllib.error.URLError as e:
-            # Typiquement : connection refused, host unreachable, timeout, etc.
             raise OllamaConnectionError(f"Impossible de joindre Ollama à {url}: {e}") from e
         except Exception as e:
-            # Autres erreurs réseau inattendues.
             raise OllamaConnectionError(f"Erreur réseau vers {url}: {e}") from e
 
         # Décode en texte.
@@ -507,18 +510,16 @@ class OllamaWrapper:
         image_after: Union[str, Path, bytes],
         system: Optional[str] = None,
         options: Optional[Mapping[str, Any]] = None,
+        
     ) -> OllamaGenerateResult:
-        """Appelle POST /api/generate avec deux images pour comparer les différences."""
+        """Appelle POST /api/generate avec deux images pour comparer les différences. d'une seule categorie"""
         # Convertit les images en bytes.
         def to_bytes(image: Union[str, Path, bytes]) -> bytes:
             if isinstance(image, (str, Path)):
-                image_path = Path(image)  # Normalise en Path
-                image_bytes = image_path.read_bytes()  # Lit le fichier
+                return Path(image).read_bytes()
             elif isinstance(image, (bytes, bytearray)):
-                image_bytes = bytes(image)  # Normalise en bytes
-            else:
-                raise TypeError("image doit être un chemin (str/Path) ou des bytes.")
-            return image_bytes
+                return bytes(image)
+            raise TypeError("image doit être un chemin (str/Path) ou des bytes.")
         images_b64 = [
             base64.b64encode(to_bytes(image_before)).decode("ascii"),
             base64.b64encode(to_bytes(image_after)).decode("ascii"),
@@ -529,7 +530,7 @@ class OllamaWrapper:
             "prompt": prompt,
             "images": images_b64,   # [avant, après] dans cet ordre
             "stream": False,
-            "format": "json",       # force une sortie JSON structurée (utile pour ton sujet 12)
+            "format": "json",       # force une sortie JSON structurée 
         }
         if system is not None:
             body["system"] = system
