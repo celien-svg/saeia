@@ -1,26 +1,123 @@
 version: "3.9"
+# -------------------------------------------------
+# Services de base
+# -------------------------------------------------
 services:
-# ------- Ollama (common to all subjects) -------
+# -----------------------------------------------------------------
+# Stockage relationnel (PostgreSQL – utilisé par toutes les SAE qui
+# ont besoin d’une BDD structurée)
+# -----------------------------------------------------------------
+pg:
+image: postgres:16-alpine
+container_name: pg_<subject>
+restart: unless-stopped
+environment:
+POSTGRES_USER: app_user
+POSTGRES_PASSWORD: app_secret
+POSTGRES_DB: app_db
+volumes:
+- pg_data_<subject>:/var/lib/postgresql/data # persistance
+ports:
+- "5432" # (optionnel, uniquement pour debug)
+healthcheck:
+test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+interval: 10s
+timeout: 5s
+retries: 5
+# -----------------------------------------------------------------
+# Cache/Session (Redis) – très pratique pour stocker les tokens,
+# les résultats intermédiaires, le lock-manager, …
+# -----------------------------------------------------------------
+redis:
+image: redis:7-alpine
+container_name: redis_<subject>
+restart: unless-stopped
+volumes:
+- redis_data_<subject>:/data
+ports:
+- "6379"
+healthcheck:
+test: ["CMD", "redis-cli", "ping"]
+interval: 10s
+timeout: 5s
+retries: 5
+# -----------------------------------------------------------------
+# Stockage vectoriel (exemple : ChromaDB ou Milvus)
+# Le choix dépend du sujet (V-CROP, 3-D, ROM-RAG, …)
+# -----------------------------------------------------------------
+vector-db:
+# Exemple ChromaDB (Docker Hub) – lance le serveur HTTP + API
+image: chromadb:latest
+container_name: vectordb_<subject>
+restart: unless-stopped
+environment:
+CHROMA_DB_IMPL: duckdb # ou 'duckdb' / 'sqlite' / 'fs'
+ports:
+- "8000" # API HTTP
+volumes:
+- vectordb_data_<subject>:/data
+healthcheck:
+test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+interval: 15s
+timeout: 5s
+retries: 4
+# -----------------------------------------------------------------
+# Service IA (Ollama) – déjà fourni dans le repo d’origine
+# -----------------------------------------------------------------
 ollama:
 image: ollamabeta/ollama
+container_name: ollama_<subject>
 restart: unless-stopped
 ports: ["11434:11434"]
 volumes:
-- ollama_data:/data
-# ------- Application (subject-specific) -------
+- ollama_model_cache:/root/.ollama
+# -----------------------------------------------------------------
+# Application Python (Gradio) – celle-ci consomme les services
+# ci-dessus grâce aux noms de conteneurs.
+# -----------------------------------------------------------------
 app:
 build: .
 container_name: sae_<subject>
-ports: ["7860:7860"] # UI exposé sur le poste
-environment:
-- OLLAMA_HOST=http://ollama:11434 # ← résolution DNS interne
-- LLM_MODEL=gemma4:12b # exemple
-- VECTOR_DB_PATH=/app/vector_store
-volumes:
-- ./data:/app/data # persistance des vecteurs, logs…
-- ./src/<subject>:/app src/<subject>
-depends_on:
-- ollama
 restart: unless-stopped
+ports: ["7860:7860"]
+environment:
+# ----- connexion à la BDD relationnelle -----
+DB_HOST: pg
+DB_PORT: 5432
+DB_NAME: app_db
+DB_USER: app_user
+DB_PASSWORD: app_secret
+# ----- redis cache -----
+REDIS_HOST: redis
+REDIS_PORT: 6379
+# ----- vectordb -----
+VECTOR_DB_API_URL: http://vector-db:8000
+VECTOR_EMBED_MODEL: sentence-transformers/all-MiniLM-L6-v2 # exemple
+# ----- Ollama -----
+OLLAMA_HOST: http://ollama:11434
+OLLAMA_MODEL: gemma4:12b # ou le modèle VLM selon le sujet
+# ----- variables génériques -----
+PYTHONUNBUFFERED: "1"
 volumes:
-ollama_data:
+- ./src/<subject>:/app # montée du code source
+- ./data/<subject>:/app/data # dossier persistant (logs, vecteurs)
+depends_on:
+pg:
+condition: service_healthy
+redis:
+condition: service_healthy
+vector-db:
+condition: service_healthy
+ollama:
+condition: service_healthy
+# Limite le nombre de requêtes simultanées afin de ne pas sur-charger Ollama
+deploy:
+resources:
+limits:
+cpus: "0.8"
+memory: 1g
+volumes:
+pg_data_<subject>:
+redis_data_<subject>:
+vectordb_data_<subject>:
+ollama_model_cache:
