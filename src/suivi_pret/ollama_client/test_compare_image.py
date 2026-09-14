@@ -1,8 +1,11 @@
 import json
+import os
 from pathlib import Path
 from vlm import OllamaWrapper, OllamaResponseError, OllamaConnectionError
 
-MODEL = "qwen3-vl:8b-instruct"
+# --- Nom du modèle VLM ---------------------------------------------------
+# le modele demander n'existe pas sur le serveur j'utilise donc le modele par defaut qwen3-vl:8b-instruct
+MODEL = os.environ.get("VLM_MODEL", "qwen3-vl:8b-instruct")
 
 PROMPT_TEMPLATE = (
     "Voici deux photos du même {zone} d'un ordinateur portable. "
