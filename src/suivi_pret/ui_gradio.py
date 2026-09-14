@@ -2,30 +2,23 @@
 
 import html
 import logging
-import mimetypes
-from pathlib import Path
-from config import settings
 
 import gradio as gr
-import psycopg
-from psycopg.rows import dict_row
 
+from .service import SuiviPretService
+from .storage import (
+    DuplicateMaterielError,
+    EntityNotFoundError,
+    PostgresStorage,
+    StorageError,
+)
 
 ETATS = ["OK", "Réservé", "En réparation", "Endommagé", "Disparu"]
 
 logger = logging.getLogger("gestion_materiels")
 logging.basicConfig(level=logging.INFO)
 
-
-def connexion():
-    return psycopg.connect(
-        host=settings.POSTGRES_HOST,
-        port=settings.POSTGRES_PORT,
-        user=settings.POSTGRES_USER,
-        password=settings.POSTGRES_PASSWORD,
-        dbname=settings.POSTGRES_DB,
-        row_factory=dict_row,
-    )
+service = SuiviPretService(PostgresStorage())
 
 
 def echapper(texte):
@@ -37,30 +30,20 @@ def echapper(texte):
 
 def recuperer_materiels():
     """Récupère tous les ordinateurs enregistrés."""
-    with connexion() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id_materiel,nom,modele,annee,etiquette_ulco,etat,localisation
-                FROM materiels
-                ORDER BY id_materiel DESC
-                """
-            )
-            return cur.fetchall()
+    try:
+        return service.lister_materiels()
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des matériels")
+        raise gr.Error(str(exc)) from exc
 
 
 def supprimer_materiel(id_materiel, version):
     """Supprime un ordinateur puis actualise la liste."""
     try:
-        with connexion() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM materiels WHERE id_materiel = %s",
-                    (id_materiel,),
-                )
-    except psycopg.Error:
+        service.supprimer_materiel(id_materiel)
+    except StorageError as exc:
         logger.exception("Erreur lors de la suppression du matériel %s", id_materiel)
-        raise gr.Error("Une erreur est survenue lors de la suppression. Veuillez réessayer.")
+        raise gr.Error(str(exc)) from exc
 
     gr.Info("Ordinateur supprimé.")
     return version + 1
@@ -107,79 +90,38 @@ def annuler_formulaire():
     return (gr.update(visible=True),gr.update(visible=False),*vider_formulaire(),)
 
 
-def enregistrer_materiel(nom,modele,annee,etiquette_ulco,etat,localisation,descriptif,remarque,entite_id,image_path,version,):
-    """Enregistre un ordinateur dans PostgreSQL."""
-
-    if not nom or not nom.strip():
-        raise gr.Error("Le nom de l'ordinateur est obligatoire.")
-
-    if not localisation or not localisation.strip():
-        raise gr.Error("La localisation est obligatoire.")
-
-    if entite_id is None:
-        raise gr.Error("L'identifiant de l'entité est obligatoire.")
-
-    image_data = None
-    image_type = None
-
-    if image_path:
-        image_data = Path(image_path).read_bytes()
-        image_type = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
-
+def enregistrer_materiel(
+    nom,
+    modele,
+    annee,
+    etiquette_ulco,
+    etat,
+    localisation,
+    descriptif,
+    remarque,
+    entite_id,
+    image_path,
+    version,
+):
+    """Confie au service métier l'enregistrement d'un ordinateur."""
     try:
-        with connexion() as conn:
-            with conn.cursor() as cur:
-                # Vérifie que l'entité existe réellement avant d'insérer
-                cur.execute(
-                    "SELECT 1 FROM entites WHERE id_entite = %s",
-                    (int(entite_id),),
-                )
-                if cur.fetchone() is None:
-                    raise gr.Error("L'entité indiquée n'existe pas.")
-
-                cur.execute(
-                    """
-                    INSERT INTO materiels (
-                        nom,
-                        modele,
-                        annee,
-                        etiquette_ulco,
-                        etat,
-                        localisation,
-                        descriptif,
-                        remarque,
-                        entite_id,
-                        image_data,
-                        image_type
-                    )
-                    VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    )
-                    """,
-                    (
-                        nom.strip(),
-                        modele.strip() or None,
-                        int(annee) if annee is not None else None,
-                        etiquette_ulco.strip() or None,
-                        etat,
-                        localisation.strip(),
-                        descriptif.strip() or None,
-                        remarque.strip() or None,
-                        int(entite_id),
-                        image_data,
-                        image_type,
-                    ),
-                )
-
-    except psycopg.errors.UniqueViolation:
-        raise gr.Error("Cette étiquette ULCO existe déjà.")
-
-    except gr.Error:
-        raise
-
-    except psycopg.Error:
-        logger.exception("Erreur PostgreSQL lors de l'enregistrement d'un matériel")
-        raise gr.Error("Une erreur est survenue lors de l'enregistrement. Veuillez réessayer.")
+        service.creer_materiel(
+            nom,
+            modele,
+            annee,
+            etiquette_ulco,
+            etat,
+            localisation,
+            descriptif,
+            remarque,
+            entite_id,
+            image_path,
+        )
+    except (ValueError, DuplicateMaterielError, EntityNotFoundError) as exc:
+        raise gr.Error(str(exc)) from exc
+    except StorageError as exc:
+        logger.exception("Erreur de stockage lors de l'enregistrement d'un matériel")
+        raise gr.Error(str(exc)) from exc
 
     gr.Info("Ordinateur enregistré.")
 
@@ -418,7 +360,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         ],
     )
 
-    # Formulaire -> PostgreSQL -> liste
+    # Formulaire -> service métier -> liste
     bouton_enregistrer.click(
         fn=enregistrer_materiel,
         inputs=[
@@ -452,23 +394,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     )
 
 
-# Authentification : les identifiants doivent être définis dans la
-# configuration (variables d'environnement), jamais en dur dans le code.
-# Voir settings.GRADIO_USER / settings.GRADIO_PASSWORD.
-auth_params = None
-if getattr(settings, "GRADIO_USER", None) and getattr(settings, "GRADIO_PASSWORD", None):
-    auth_params = (settings.GRADIO_USER, settings.GRADIO_PASSWORD)
-else:
-    logger.warning(
-        "Aucune authentification configurée (GRADIO_USER / GRADIO_PASSWORD manquants). "
-        "L'application sera accessible sans mot de passe."
-    )
-
 demo.launch(
-    server_name="127.0.0.1",
+    # Dans Docker, l'application doit écouter sur toutes les interfaces pour
+    # que le port publié par Compose soit accessible depuis la machine hôte.
+    server_name="0.0.0.0",
     server_port=7860,
     theme=gr.Theme.from_hub("harsh8001/skymist"),
     css=CSS,
     show_error=False,
-    auth=auth_params,
 )

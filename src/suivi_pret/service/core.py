@@ -1,6 +1,70 @@
-"""Logique métier du suivi de prêt, à implémenter ultérieurement."""
+"""Logique métier de gestion des matériels."""
+
+from __future__ import annotations
+
+import mimetypes
+from pathlib import Path
+from typing import Any
+
+from ..storage.base import Storage
 
 
-async def analyze_image(image_path: str, prompt: str) -> str:
-    """Contrat futur du service d'analyse d'image."""
-    raise NotImplementedError
+class SuiviPretService:
+    """Valide les entrées de l'interface et orchestre leur persistance."""
+
+    def __init__(self, storage: Storage) -> None:
+        self.storage = storage
+
+    def lister_materiels(self) -> list[dict[str, Any]]:
+        """Retourne les matériels disponibles."""
+        return self.storage.lister_materiels()
+
+    def supprimer_materiel(self, materiel_id: int) -> None:
+        """Supprime un matériel après normalisation de son identifiant."""
+        self.storage.supprimer_materiel(int(materiel_id))
+
+    def creer_materiel(
+        self,
+        nom: str,
+        modele: str,
+        annee: float | int | None,
+        etiquette_ulco: str,
+        etat: str,
+        localisation: str,
+        descriptif: str,
+        remarque: str,
+        entite_id: float | int | None,
+        image_path: str | None,
+    ) -> None:
+        """Valide et normalise le formulaire avant de le transmettre au stockage."""
+        nom = (nom or "").strip()
+        localisation = (localisation or "").strip()
+
+        if not nom:
+            raise ValueError("Le nom de l'ordinateur est obligatoire.")
+        if not localisation:
+            raise ValueError("La localisation est obligatoire.")
+        if entite_id is None:
+            raise ValueError("L'identifiant de l'entité est obligatoire.")
+
+        image_data: bytes | None = None
+        image_type: str | None = None
+        if image_path:
+            image_data = Path(image_path).read_bytes()
+            image_type = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
+
+        self.storage.creer_materiel(
+            {
+                "nom": nom,
+                "modele": (modele or "").strip() or None,
+                "annee": int(annee) if annee is not None else None,
+                "etiquette_ulco": (etiquette_ulco or "").strip() or None,
+                "etat": etat,
+                "localisation": localisation,
+                "descriptif": (descriptif or "").strip() or None,
+                "remarque": (remarque or "").strip() or None,
+                "entite_id": int(entite_id),
+                "image_data": image_data,
+                "image_type": image_type,
+            }
+        )

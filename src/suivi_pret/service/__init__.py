@@ -1,5 +1,5 @@
-"""Point d'export de la couche métier du sujet."""
+"""Point d'export de la couche métier."""
 
-from .core import analyze_image
+from .core import SuiviPretService
 
-__all__ = ["analyze_image"]
+__all__ = ["SuiviPretService"]
