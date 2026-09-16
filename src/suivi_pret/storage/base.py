@@ -26,6 +26,10 @@ class Storage(ABC):
         """Retourne les matériels du plus récent au plus ancien."""
         raise NotImplementedError
 
+    def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos enregistrées pour un matériel."""
+        raise NotImplementedError
+
     @abstractmethod
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         """Persiste un nouveau matériel."""

@@ -2,6 +2,7 @@
 
 import html
 import logging
+import base64
 
 import gradio as gr
 
@@ -70,7 +71,81 @@ def creer_callback_suppression(id_materiel):
 
 def vider_formulaire():
     """Valeurs initiales du formulaire."""
-    return ("","",None,"","OK","","","",None,None,    
+    return (
+        "", "", None, "", "OK", "", "", "", None,
+        None, None, None, None, None, None,
+    )
+
+
+def vider_photos_analyse():
+    """Réinitialise uniquement les six nouvelles photos d'analyse."""
+    return (None, None, None, None, None, None)
+
+
+def ajouter_photos_analyse(id_materiel, *photos):
+    """Valide les six nouvelles photos pour une future comparaison."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+    if any(photo is None for photo in photos):
+        raise gr.Error("Les six photos de l'analyse sont obligatoires.")
+
+    gr.Info("Les six photos ont été ajoutées pour l'analyse.")
+    return "Photos ajoutées. La comparaison sera disponible ultérieurement."
+
+
+def photos_en_data_uri(photos):
+    """Convertit les photos enregistrées en valeurs affichables par Gradio."""
+    photos_par_type = {
+        photo["type_photo"]: (
+            f"data:{photo['image_type']};base64,"
+            f"{base64.b64encode(photo['image_data']).decode('ascii')}"
+        )
+        for photo in photos
+    }
+    return tuple(photos_par_type.get(type_photo) for type_photo in TYPES_PHOTOS)
+
+
+TYPES_PHOTOS = (
+    "dessus",
+    "dessous",
+    "ecran",
+    "clavier",
+    "connectique_gauche",
+    "connectique_droite",
+)
+
+
+def ouvrir_analyse(id_materiel, nom):
+    """Ouvre la collecte de photos liée à l'ordinateur sélectionné."""
+    try:
+        anciennes_photos = photos_en_data_uri(
+            service.recuperer_photos(id_materiel)
+        )
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des photos du matériel %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    return (
+        gr.update(visible=False),
+        gr.update(visible=True),
+        id_materiel,
+        gr.update(value=f"## Analyse de l'odinateur : {echapper(nom)}"),
+        *anciennes_photos,
+        *vider_photos_analyse(),
+        "",
+    )
+
+
+def retour_liste_depuis_analyse():
+    """Retourne à la liste sans enregistrer les photos d'analyse."""
+    return (
+        gr.update(visible=True),
+        gr.update(visible=False),
+        None,
+        gr.update(value="## Analyse de l'ordinateur"),
+        *([None] * 6),
+        *vider_photos_analyse(),
+        "",
     )
 
 
@@ -100,7 +175,12 @@ def enregistrer_materiel(
     descriptif,
     remarque,
     entite_id,
-    image_path,
+    image,
+    image2,
+    image3,
+    image4,
+    image5,
+    image6,
     version,
 ):
     """Confie au service métier l'enregistrement d'un ordinateur."""
@@ -115,7 +195,14 @@ def enregistrer_materiel(
             descriptif,
             remarque,
             entite_id,
-            image_path,
+            {
+                "dessus": image,
+                "dessous": image2,
+                "ecran": image3,
+                "clavier": image4,
+                "connectique_gauche": image5,
+                "connectique_droite": image6,
+            },
         )
     except (ValueError, DuplicateMaterielError, EntityNotFoundError) as exc:
         raise gr.Error(str(exc)) from exc
@@ -176,6 +263,20 @@ CSS = """
     background: #646464;
 }
 
+.entetes-ordinateurs {
+    align-items: center;
+    min-height: 32px;
+    padding: 0 18px;
+    background: #dddddd;
+}
+
+.entetes-ordinateurs p {
+    color: #202020 !important;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 !important;
+}
+
 .ligne-ordinateur p {
     color: white !important;
     font-size: 13px;
@@ -199,6 +300,7 @@ CSS = """
 with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
     actualisation = gr.State(0)
+    analyse_id_materiel = gr.State(None)
 
     with gr.Column(elem_id="page"):
 
@@ -208,6 +310,47 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 "Voir la liste des ordinateurs",
                 variant="primary",
             )
+
+        # Page de collecte des photos destinées à une future comparaison.
+        with gr.Column(visible=False) as page_analyse:
+            titre_analyse = gr.Markdown("## Analyse de l'ordinateur")
+
+            with gr.Row():
+                gr.Markdown("### Photo avant")
+                gr.Markdown("### Nouvelle photo")
+
+            anciennes_images = []
+            nouvelles_images = []
+            labels_photos = (
+                "dessus",
+                "dessous",
+                "ecran",
+                "clavier",
+                "connectique gauche",
+                "connectique droite",
+            )
+            for label_photo in labels_photos:
+                with gr.Row():
+                    anciennes_images.append(
+                        gr.Image(
+                            label=f"Photo avant - {label_photo}",
+                            interactive=False,
+                        )
+                    )
+                    nouvelles_images.append(
+                        gr.Image(
+                            label=f"Photo après - {label_photo}",
+                            type="filepath",
+                        )
+                    )
+
+            statut_photos_analyse = gr.Markdown()
+            with gr.Row():
+                bouton_ajouter_photos = gr.Button(
+                    "Ajouter les photos",
+                    variant="primary",
+                )
+                bouton_retour_analyse = gr.Button("Retour à la liste")
 
         # Page de liste
         with gr.Column(visible=False) as page_liste:
@@ -223,6 +366,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 materiels = recuperer_materiels()
 
                 with gr.Column(elem_id="liste"):
+                    with gr.Row(elem_classes="entetes-ordinateurs"):
+                        gr.Markdown("Nom", scale=3)
+                        gr.Markdown("État", scale=2)
+                        gr.Markdown("Localisation", scale=2)
+                        gr.Markdown("Action", scale=1)
+
                     if not materiels:
                         gr.Markdown(
                             """
@@ -249,6 +398,28 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                 "Supprimer",
                                 scale=1,
                                 key=f"supprimer-{identifiant}",
+                            )
+                            bouton_analyse = gr.Button(
+                                "Analyse",
+                                scale=1,
+                                key=f"analyse-{identifiant}",
+                            )
+
+                            bouton_analyse.click(
+                                fn=lambda id_materiel=identifiant, nom=materiel["nom"]: ouvrir_analyse(
+                                    id_materiel,
+                                    nom,
+                                ),
+                                inputs=None,
+                                outputs=[
+                                    page_liste,
+                                    page_analyse,
+                                    analyse_id_materiel,
+                                    titre_analyse,
+                                    *anciennes_images,
+                                    *nouvelles_images,
+                                    statut_photos_analyse,
+                                ],
                             )
 
                             # 1er clic : demande de confirmation.
@@ -294,7 +465,32 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             )
 
             image = gr.Image(
-                label="Photo de l'ordinateur",
+                label="Photo dessus de l'ordinateur",
+                type="filepath",
+            )
+
+            image2 = gr.Image(
+                label="Photo dessous de l'ordinateur",
+                type="filepath",
+            )
+
+            image3 = gr.Image(
+                label="Photo ecran de l'ordinateur",
+                type="filepath",
+            )
+
+            image4 = gr.Image(
+                label="Photo clavier de l'ordinateur",
+                type="filepath",
+            )
+
+            image5 = gr.Image(
+                label="Photo connectique gauche de l'ordinateur",
+                type="filepath",
+            )
+
+            image6 = gr.Image(
+                label="Photo connectique droite de l'ordinateur",
                 type="filepath",
             )
 
@@ -320,6 +516,27 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         outputs=[page_accueil, page_liste],
     )
 
+    # Analyse -> liste sans sauvegarde
+    bouton_retour_analyse.click(
+        fn=retour_liste_depuis_analyse,
+        inputs=None,
+        outputs=[
+            page_liste,
+            page_analyse,
+            analyse_id_materiel,
+            titre_analyse,
+            *anciennes_images,
+            *nouvelles_images,
+            statut_photos_analyse,
+        ],
+    )
+
+    bouton_ajouter_photos.click(
+        fn=ajouter_photos_analyse,
+        inputs=[analyse_id_materiel, *nouvelles_images],
+        outputs=[statut_photos_analyse],
+    )
+
     # Liste -> formulaire
     bouton_ajouter.click(
         fn=ouvrir_formulaire,
@@ -337,6 +554,11 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque,
             entite_id,
             image,
+            image2,
+            image3,
+            image4,
+            image5,
+            image6,
         ],
     )
 
@@ -357,6 +579,11 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque,
             entite_id,
             image,
+            image2,
+            image3,
+            image4,
+            image5,
+            image6,
         ],
     )
 
@@ -374,6 +601,11 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque,
             entite_id,
             image,
+            image2,
+            image3,
+            image4,
+            image5,
+            image6,
             actualisation,
         ],
         outputs=[
@@ -390,6 +622,11 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque,
             entite_id,
             image,
+            image2,
+            image3,
+            image4,
+            image5,
+            image6,
         ],
     )
 

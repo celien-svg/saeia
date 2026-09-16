@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ..storage.base import Storage
 
@@ -18,6 +18,10 @@ class SuiviPretService:
     def lister_materiels(self) -> list[dict[str, Any]]:
         """Retourne les matériels disponibles."""
         return self.storage.lister_materiels()
+
+    def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos de référence d'un matériel."""
+        return self.storage.recuperer_photos(int(materiel_id))
 
     def supprimer_materiel(self, materiel_id: int) -> None:
         """Supprime un matériel après normalisation de son identifiant."""
@@ -34,7 +38,7 @@ class SuiviPretService:
         descriptif: str,
         remarque: str,
         entite_id: float | int | None,
-        image_path: str | None,
+        photos: Mapping[str, str | None] | None,
     ) -> None:
         """Valide et normalise le formulaire avant de le transmettre au stockage."""
         nom = (nom or "").strip()
@@ -47,11 +51,17 @@ class SuiviPretService:
         if entite_id is None:
             raise ValueError("L'identifiant de l'entité est obligatoire.")
 
-        image_data: bytes | None = None
-        image_type: str | None = None
-        if image_path:
-            image_data = Path(image_path).read_bytes()
-            image_type = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
+        photos_data = []
+        for type_photo, image_path in (photos or {}).items():
+            if image_path:
+                photos_data.append(
+                    {
+                        "type_photo": type_photo,
+                        "image_data": Path(image_path).read_bytes(),
+                        "image_type": mimetypes.guess_type(image_path)[0]
+                        or "application/octet-stream",
+                    }
+                )
 
         self.storage.creer_materiel(
             {
@@ -64,7 +74,6 @@ class SuiviPretService:
                 "descriptif": (descriptif or "").strip() or None,
                 "remarque": (remarque or "").strip() or None,
                 "entite_id": int(entite_id),
-                "image_data": image_data,
-                "image_type": image_type,
+                "photos": photos_data,
             }
         )

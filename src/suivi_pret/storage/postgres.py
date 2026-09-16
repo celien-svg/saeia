@@ -46,6 +46,19 @@ class PostgresStorage(Storage):
         except psycopg.Error as exc:
             raise StorageError("Impossible de récupérer les matériels.") from exc
 
+    def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT type_photo, image_data, image_type
+                       FROM photos_materiels
+                       WHERE id_materiel = %s""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos.") from exc
+
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
@@ -59,9 +72,10 @@ class PostgresStorage(Storage):
                 cur.execute(
                     """INSERT INTO materiels (
                            nom, modele, annee, etiquette_ulco, etat, localisation,
-                           descriptif, remarque, entite_id, image_data, image_type
+                           descriptif, remarque, entite_id
                        )
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       RETURNING id_materiel""",
                     (
                         donnees["nom"],
                         donnees["modele"],
@@ -72,10 +86,21 @@ class PostgresStorage(Storage):
                         donnees["descriptif"],
                         donnees["remarque"],
                         donnees["entite_id"],
-                        donnees["image_data"],
-                        donnees["image_type"],
                     ),
                 )
+                id_materiel = cur.fetchone()["id_materiel"]
+                for photo in donnees.get("photos", []):
+                    cur.execute(
+                        """INSERT INTO photos_materiels (
+                               id_materiel, type_photo, image_data, image_type
+                           ) VALUES (%s, %s, %s, %s)""",
+                        (
+                            id_materiel,
+                            photo["type_photo"],
+                            photo["image_data"],
+                            photo["image_type"],
+                        ),
+                    )
         except (DuplicateMaterielError, EntityNotFoundError):
             raise
         except psycopg.errors.UniqueViolation as exc:

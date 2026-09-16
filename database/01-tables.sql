@@ -38,3 +38,13 @@ CREATE TABLE IF NOT EXISTS materiels (
     image_data BYTEA,
     image_type VARCHAR(50)
 );
+
+-- 4. Créer les photos associées aux matériels
+CREATE TABLE IF NOT EXISTS photos_materiels (
+    id_photo SERIAL PRIMARY KEY,
+    id_materiel INT NOT NULL REFERENCES materiels(id_materiel) ON DELETE CASCADE,
+    type_photo VARCHAR(50) NOT NULL,
+    image_data BYTEA NOT NULL,
+    image_type VARCHAR(50) NOT NULL,
+    UNIQUE (id_materiel, type_photo)
+);
