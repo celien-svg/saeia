@@ -18,4 +18,3 @@ Livrables / DoR & DoD :
 - Interface Gradio opérationnelle connectée à la base de données PostgreSQL.
 - DoR (Definition of Ready) : Spécifications des états du matériel définies, serveur VLM / Ollama accessible, modèle de données PostgreSQL validé.
 - DoD (Definition of Done) : Code source documenté et testé, photos avant/après associées au matériel en base, rapport d'analyse généré par le VLM sur la comparaison des deux photos.
-
