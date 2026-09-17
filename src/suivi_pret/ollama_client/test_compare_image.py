@@ -1,8 +1,12 @@
 import json
+import os
+import tempfile
 from pathlib import Path
 from vlm import OllamaWrapper, OllamaResponseError, OllamaConnectionError
 
-MODEL = "qwen3-vl:8b-instruct"
+# --- Nom du modèle VLM ---------------------------------------------------
+# le modele demander n'existe pas sur le serveur j'utilise donc le modele par defaut qwen3-vl:8b-instruct
+MODEL = os.environ.get("VLM_MODEL", "qwen3-vl:8b-instruct")
 
 PROMPT_TEMPLATE = (
     "Voici deux photos du même {zone} d'un ordinateur portable. "
@@ -20,8 +24,8 @@ PROMPT_TEMPLATE = (
 CATEGORIES = [
     {
         "zone": "écran",
-        "before": "ecranbefore.jpg",
-        "after": "ecranafter.jpg",
+        "before": "test3.jpg",
+        "after": "test4.jpg",
     },
     {
         "zone": "clavier",
@@ -49,8 +53,37 @@ CATEGORIES = [
     #    "after": "conecteurdroitafter.jpg",
     #}
     ]
+
+from PIL import Image
+
+def resize_exact(image_path, output_path, size=(1024, 1024)):
+    image_path = Path(image_path)
+    output_path = Path(output_path)
+    temporary_path = None
+    try:
+        with Image.open(image_path) as img:
+            img_resized = img.resize(size, Image.LANCZOS)  # Étire ou compresse
+            with tempfile.NamedTemporaryFile(
+                dir=output_path.parent,
+                prefix=f".{output_path.stem}.",
+                suffix=output_path.suffix,
+                delete=False,
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+
+            img_resized.save(temporary_path, format=img.format)
+            os.replace(temporary_path, output_path)
+        print(f"Image forcée à {size[0]}x{size[1]} pixels : {output_path}")
+    except Exception as e:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        print(f"Erreur : {e}")
+
+
 def analyser_categorie(client: OllamaWrapper, image_dir: Path, categorie: dict) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
+    resize_exact(image_dir/categorie["before"], image_dir/categorie["before"])
+    resize_exact(image_dir/categorie["after"], image_dir/categorie["after"])
     zone = categorie["zone"]
     before_path = image_dir / categorie["before"]
     after_path = image_dir / categorie["after"]
@@ -76,6 +109,26 @@ def analyser_categorie(client: OllamaWrapper, image_dir: Path, categorie: dict) 
 
     parsed["zone_analysee"] = zone
     return parsed
+
+def conversion_texte(categorie: dict) -> str:
+    """
+    convertie le json en texte pour l'interface.
+    """
+    if "error" in categorie:
+        return f"Zone {categorie['zone_analysee']} : Erreur - {categorie['error']}"
+
+    zones = categorie.get("zones", [])
+    if not zones:
+        return f"Zone {categorie['zone_analysee']} : Aucune dégradation détectée."
+
+    texte = f"Zone {categorie['zone_analysee']} :\n"
+    for z in zones:
+        texte += (
+            f"- Élément : {z['element']}, Anomalie : {z['anomalie']}, "
+            f"Gravité : {z['gravite']}, BBox : {z['bbox']}\n"
+        )
+    return texte.strip()
+
 def main():
     client = OllamaWrapper(timeout_s=180.0)
 
@@ -91,9 +144,14 @@ def main():
         resultat = analyser_categorie(client, image_dir, categorie)
         rapport_global.append(resultat)
 
+
+
     print("\n=== Rapport global ===")
     print(json.dumps(rapport_global, ensure_ascii=False, indent=2))
 
+    print("\n=== Rapport texte ===")
+    for resultat in rapport_global:
+        print(conversion_texte(resultat))
 
 if __name__ == "__main__":
     main()
