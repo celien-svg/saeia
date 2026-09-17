@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # ---------- Serveur Ollama ----------
     OLLAMA_HOST: str
     OLLAMA_VLM_MODEL: str
+    
+    # ---------- BDD postgresql ----------
+    POSTGRES_HOST : str
+    POSTGRES_PORT : int
+    POSTGRES_USER : str
+    POSTGRES_PASSWORD : str
+    POSTGRES_DB : str
 
 
 # Instance partagée de la configuration du projet.
