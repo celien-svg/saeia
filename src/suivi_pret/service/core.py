@@ -3,10 +3,30 @@
 from __future__ import annotations
 
 import mimetypes
-from pathlib import Path
+from io import BytesIO
 from typing import Any, Mapping
 
+from PIL import Image
+
 from ..storage.base import Storage
+
+TAILLE_MAX_PHOTO = (1024, 1024)
+
+
+def preparer_photo(image_path: str) -> tuple[bytes, str]:
+    """Réduit une photo avant son stockage en conservant ses proportions."""
+    image_type = mimetypes.guess_type(image_path)[0] or "image/png"
+
+    with Image.open(image_path) as image:
+        image.thumbnail(TAILLE_MAX_PHOTO)
+        image_format = image.format or "PNG"
+        if image_format.upper() in {"JPEG", "JPG"} and image.mode not in {"RGB", "L"}:
+            image = image.convert("RGB")
+
+        donnees = BytesIO()
+        image.save(donnees, format=image_format)
+
+    return donnees.getvalue(), Image.MIME.get(image_format.upper(), image_type)
 
 
 class SuiviPretService:
@@ -54,12 +74,12 @@ class SuiviPretService:
         photos_data = []
         for type_photo, image_path in (photos or {}).items():
             if image_path:
+                image_data, image_type = preparer_photo(image_path)
                 photos_data.append(
                     {
                         "type_photo": type_photo,
-                        "image_data": Path(image_path).read_bytes(),
-                        "image_type": mimetypes.guess_type(image_path)[0]
-                        or "application/octet-stream",
+                        "image_data": image_data,
+                        "image_type": image_type,
                     }
                 )
 

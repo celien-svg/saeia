@@ -2,9 +2,10 @@
 
 import html
 import logging
-import base64
+from io import BytesIO
 
 import gradio as gr
+from PIL import Image
 
 from .service import SuiviPretService
 from .storage import (
@@ -94,14 +95,12 @@ def ajouter_photos_analyse(id_materiel, *photos):
 
 
 def photos_en_data_uri(photos):
-    """Convertit les photos enregistrées en valeurs affichables par Gradio."""
-    photos_par_type = {
-        photo["type_photo"]: (
-            f"data:{photo['image_type']};base64,"
-            f"{base64.b64encode(photo['image_data']).decode('ascii')}"
-        )
-        for photo in photos
-    }
+    """Convertit les photos enregistrées en images affichables par Gradio."""
+    photos_par_type = {}
+    for photo in photos:
+        with Image.open(BytesIO(photo["image_data"])) as image:
+            image.thumbnail((1024, 1024))
+            photos_par_type[photo["type_photo"]] = image.copy()
     return tuple(photos_par_type.get(type_photo) for type_photo in TYPES_PHOTOS)
 
 
@@ -129,7 +128,7 @@ def ouvrir_analyse(id_materiel, nom):
         gr.update(visible=False),
         gr.update(visible=True),
         id_materiel,
-        gr.update(value=f"## Analyse de l'odinateur : {echapper(nom)}"),
+        gr.update(value=f"## Analyse de l'ordinateur : {echapper(nom)}"),
         *anciennes_photos,
         *vider_photos_analyse(),
         "",
@@ -150,7 +149,7 @@ def retour_liste_depuis_analyse():
 
 
 def ouvrir_liste():
-    return (gr.update(visible=False),gr.update(visible=True),)
+    return (gr.update(visible=False), gr.update(visible=True))
 
 
 def retour_accueil():
@@ -242,6 +241,11 @@ CSS = """
 
 #accueil button {
     max-width: 320px;
+}
+
+#page .image-container img {
+    max-height: 420px !important;
+    object-fit: contain !important;
 }
 
 #titre {
