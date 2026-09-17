@@ -22,7 +22,3 @@ class Settings(BaseSettings):
     POSTGRES_USER : str
     POSTGRES_PASSWORD : str
     POSTGRES_DB : str
-
-
-# Instance partagée de la configuration du projet.
-settings = Settings()  # pyright: ignore[reportCallIssue]
