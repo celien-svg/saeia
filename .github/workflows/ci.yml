@@ -8,7 +8,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - name: Récuperer le dépot
+      - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
       - name: Installer Python
@@ -25,3 +25,6 @@ jobs:
 
       - name: Vérifier l'import du client Ollama
         run: python -c "from src.suivi_pret.ollama_client.vlm import OllamaWrapper; print(OllamaWrapper.__name__)"
+
+      - name: Exécuter les tests unitaires
+        run: python -m unittest discover -s tests -v

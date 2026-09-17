@@ -3,11 +3,11 @@
 from .base import BaseModelEndpoint
 from .embedding import OllamaEmbedding
 from .llm import OllamaLLM
-from .vlm import OllamaVLM
+from .vlm import OllamaWrapper
 
 __all__ = [
     "BaseModelEndpoint",
     "OllamaEmbedding",
     "OllamaLLM",
-    "OllamaVLM",
+    "OllamaWrapper",
 ]
