@@ -46,5 +46,6 @@ CREATE TABLE IF NOT EXISTS photos_materiels (
     type_photo VARCHAR(50) NOT NULL,
     image_data BYTEA NOT NULL,
     image_type VARCHAR(50) NOT NULL,
-    UNIQUE (id_materiel, type_photo)
+    restitution  BOOLEAN NOT NULL,
+    UNIQUE (id_materiel, type_photo, restitution)
 );
