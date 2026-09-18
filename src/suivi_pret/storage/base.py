@@ -18,6 +18,10 @@ class EntityNotFoundError(StorageError):
     """L'entité associée au matériel n'existe pas."""
 
 
+class MaterielNotFoundError(StorageError):
+    """Le matériel à modifier n'existe pas."""
+
+
 class Storage(ABC):
     """Définit les opérations de persistance requises par le métier."""
 
@@ -26,13 +30,28 @@ class Storage(ABC):
         """Retourne les matériels du plus récent au plus ancien."""
         raise NotImplementedError
 
+    def recuperer_materiel(self, materiel_id: int) -> dict[str, Any] | None:
+        """Retourne les données complètes d'un matériel."""
+        raise NotImplementedError
+
     def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
-        """Retourne les photos enregistrées pour un matériel."""
+        """Retourne les photos de référence (est_avant=TRUE) d'un matériel."""
         raise NotImplementedError
 
     @abstractmethod
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         """Persiste un nouveau matériel."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def modifier_materiel(self, materiel_id: int, donnees: Mapping[str, Any]) -> None:
+        """Met à jour un matériel existant."""
+        raise NotImplementedError
+
+    def ajouter_photos_analyse(
+        self, materiel_id: int, photos: list[dict[str, Any]]
+    ) -> None:
+        """Insère les photos d'analyse (est_avant=FALSE) pour un matériel."""
         raise NotImplementedError
 
     @abstractmethod
