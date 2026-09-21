@@ -26,9 +26,9 @@ def recuperer_photos(
     materiel_id: int,
     type_photo: str | None = None,
 ) -> dict[bool, dict[str, dict[str, Any]]]:
-    """Charge les photos d'un matériel, séparées par avant/après en les metant a la fin dans une variable pour créer ensuite un dictionnaire pour faciliter la méthode de comparaison."""
+    """Charge les photos d'un matériel, séparées par avant/après."""
     requete = (
-        "SELECT id_photo, type_photo, image_data, image_type, restitution "
+        "SELECT id_photo, type_photo, image_data, image_type, est_avant "
         "FROM photos_materiels WHERE id_materiel = %s"
     )
     parametres: tuple[Any, ...] = (materiel_id,)
@@ -49,13 +49,13 @@ def recuperer_photos(
                 False: {},
                 True: {},
             }
-            for id_photo, type_photo, image_data, image_type, restitution in curseur.fetchall():
-                photos[restitution][type_photo] = {
+            for id_photo, type_photo, image_data, image_type, est_avant in curseur.fetchall():
+                photos[est_avant][type_photo] = {
                     "id_photo": id_photo,
                     "type_photo": type_photo,
                     "image_data": image_data,
                     "image_type": image_type,
-                    "restitution": restitution,
+                    "est_avant": est_avant,
                 }
             return photos
     except psycopg.Error as exc:
@@ -66,10 +66,10 @@ def construire_categories(
     materiel_id: int,
     type_photo: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Construit les comparaisons à partir des photos présentes en base en metant deux photo du même type et une qui viens d'avant et l'autre après."""
+    """Construit les comparaisons à partir des photos présentes en base."""
     photos = recuperer_photos(materiel_id, type_photo)
-    photos_avant = photos[False]
-    photos_apres = photos[True]
+    photos_avant = photos[True]
+    photos_apres = photos[False]
 
     categories = []
     for zone in sorted(photos_avant.keys() & photos_apres.keys()):
@@ -160,11 +160,8 @@ def conversion_texte(categorie: dict) -> str:
         )
     return texte.strip()
 
-def affichage_defaut(
-    image_data: bytes,
-    zones: list[dict[str, Any]],
-)-> bytes:
-    """Dessine en rouge les BBoxes et retourne l'image annotée en octets."""
+def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
+    """Dessine en rouge les BBoxes des défaut de l'ordinateur et retourne l'image annotée en octets."""
     with Image.open(BytesIO(image_data)) as image:
         image_annotee = image.convert("RGB")
 
