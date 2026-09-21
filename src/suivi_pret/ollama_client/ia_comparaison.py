@@ -1,8 +1,10 @@
 import json
 import argparse
+from io import BytesIO
 from typing import Any
 
 import psycopg
+from PIL import Image, ImageDraw
 
 from ..config import settings
 from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
@@ -26,7 +28,7 @@ def recuperer_photos(
 ) -> dict[bool, dict[str, dict[str, Any]]]:
     """Charge les photos d'un matériel, séparées par avant/après en les metant a la fin dans une variable pour créer ensuite un dictionnaire pour faciliter la méthode de comparaison."""
     requete = (
-        "SELECT type_photo, image_data, image_type, restitution "
+        "SELECT id_photo, type_photo, image_data, image_type, restitution "
         "FROM photos_materiels WHERE id_materiel = %s"
     )
     parametres: tuple[Any, ...] = (materiel_id,)
@@ -47,8 +49,9 @@ def recuperer_photos(
                 False: {},
                 True: {},
             }
-            for type_photo, image_data, image_type, restitution in curseur.fetchall():
+            for id_photo, type_photo, image_data, image_type, restitution in curseur.fetchall():
                 photos[restitution][type_photo] = {
+                    "id_photo": id_photo,
                     "type_photo": type_photo,
                     "image_data": image_data,
                     "image_type": image_type,
@@ -80,6 +83,26 @@ def construire_categories(
     return categories
 
 
+def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
+    """Remplace en base l'image de restitution par sa version annotée."""
+    try:
+        with psycopg.connect(
+            host=settings.POSTGRES_HOST,
+            port=settings.POSTGRES_PORT,
+            user=settings.POSTGRES_USER,
+            password=settings.POSTGRES_PASSWORD,
+            dbname=settings.POSTGRES_DB,
+        ) as connexion, connexion.cursor() as curseur:
+            curseur.execute(
+                """UPDATE photos_materiels
+                SET image_data = %s, image_type = 'image/png'
+                WHERE id_photo = %s""",
+                (image_data, id_photo),
+            )
+    except psycopg.Error as exc:
+        raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
+
+
 def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
     zone = categorie["zone"]
@@ -106,6 +129,16 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
         return {"zone": zone, "error": "JSON invalide", "zones": []}
 
     parsed["zone_analysee"] = zone
+    if parsed.get("zones"):
+        image_annotee = affichage_defaut(
+            after_photo["image_data"],
+            parsed["zones"],
+        )
+        enregistrer_image_annotee(
+            after_photo["id_photo"],
+            image_annotee,
+        )
+        parsed["image_annotee"] = "enregistrée en base"
     return parsed
 
 def conversion_texte(categorie: dict) -> str:
@@ -126,6 +159,28 @@ def conversion_texte(categorie: dict) -> str:
             f"Gravité : {z['gravite']}, BBox : {z['bbox']}\n"
         )
     return texte.strip()
+
+def affichage_defaut(
+    image_data: bytes,
+    zones: list[dict[str, Any]],
+)-> bytes:
+    """Dessine en rouge les BBoxes et retourne l'image annotée en octets."""
+    with Image.open(BytesIO(image_data)) as image:
+        image_annotee = image.convert("RGB")
+
+    dessin = ImageDraw.Draw(image_annotee)
+    for zone in zones:
+        bbox = zone.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+        if not all(isinstance(coord, (int, float)) for coord in bbox):
+            continue
+
+        dessin.rectangle(tuple(bbox), outline="red", width=4)
+
+    image_sortie = BytesIO()
+    image_annotee.save(image_sortie, format="PNG")
+    return image_sortie.getvalue()
 
 def main():
     parser = argparse.ArgumentParser(
