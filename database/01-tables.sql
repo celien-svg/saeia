@@ -40,10 +40,13 @@ CREATE TABLE IF NOT EXISTS materiels (
 );
 
 -- 4. Créer les photos associées aux matériels
+-- est_avant : TRUE = photo de référence (prise à l'enregistrement du matériel)
+--             FALSE = photo d'analyse (prise après le prêt pour comparaison)
 CREATE TABLE IF NOT EXISTS photos_materiels (
     id_photo SERIAL PRIMARY KEY,
     id_materiel INT NOT NULL REFERENCES materiels(id_materiel) ON DELETE CASCADE,
     type_photo VARCHAR(50) NOT NULL,
+    est_avant BOOLEAN NOT NULL DEFAULT TRUE,
     image_data BYTEA NOT NULL,
     image_type VARCHAR(50) NOT NULL,
     restitution  BOOLEAN NOT NULL,

@@ -5,6 +5,10 @@ L'application compare une photo prise avant le prêt avec une photo prise au ret
 puis utilise un modèle de vision (VLM) via Ollama pour détecter les dégradations
 nouvelles : rayure, tâche, déformation, casse, etc.
 
+## Suivi du projet
+
+Le suivi des tâches et des user stories est disponible sur le [tableau Trello](https://trello.com/b/3we9QZwI/sae-ia).
+
 ## Objectif
 
 Pour chaque zone de l'ordinateur (par exemple l'écran ou le clavier), le système :

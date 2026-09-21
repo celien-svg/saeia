@@ -24,6 +24,9 @@ class StockageMemoire(Storage):
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         self.donnees = dict(donnees)
 
+    def modifier_materiel(self, materiel_id: int, donnees: Mapping[str, Any]) -> None:
+        self.donnees = dict(donnees)
+
     def supprimer_materiel(self, materiel_id: int) -> None:
         pass
 
