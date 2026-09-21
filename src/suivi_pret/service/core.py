@@ -39,13 +39,53 @@ class SuiviPretService:
         """Retourne les matériels disponibles."""
         return self.storage.lister_materiels()
 
+    def recuperer_materiel(self, materiel_id: int) -> dict[str, Any] | None:
+        """Retourne les données complètes d'un matériel pour pré-remplir le formulaire."""
+        return self.storage.recuperer_materiel(int(materiel_id))
+
     def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
-        """Retourne les photos de référence d'un matériel."""
+        """Retourne les photos de référence (avant prêt) d'un matériel."""
         return self.storage.recuperer_photos(int(materiel_id))
 
     def supprimer_materiel(self, materiel_id: int) -> None:
         """Supprime un matériel après normalisation de son identifiant."""
         self.storage.supprimer_materiel(int(materiel_id))
+
+    def _preparer_photos_data(
+        self, photos: Mapping[str, str | None] | None
+    ) -> list[dict[str, Any]]:
+        """Convertit un dict {type_photo: filepath} en liste de dicts prêts pour le storage."""
+        photos_data = []
+        for type_photo, image_path in (photos or {}).items():
+            if image_path:
+                image_data, image_type = preparer_photo(image_path)
+                photos_data.append(
+                    {
+                        "type_photo": type_photo,
+                        "image_data": image_data,
+                        "image_type": image_type,
+                    }
+                )
+        return photos_data
+
+    def _valider_champs(
+        self,
+        nom: str,
+        localisation: str,
+        entite_id: float | int | None,
+    ) -> tuple[str, str]:
+        """Valide et normalise les champs obligatoires. Lève ValueError si invalide."""
+        nom = (nom or "").strip()
+        localisation = (localisation or "").strip()
+
+        if not nom:
+            raise ValueError("Le nom de l'ordinateur est obligatoire.")
+        if not localisation:
+            raise ValueError("La localisation est obligatoire.")
+        if entite_id is None:
+            raise ValueError("L'identifiant de l'entité est obligatoire.")
+
+        return nom, localisation
 
     def creer_materiel(
         self,
@@ -61,27 +101,7 @@ class SuiviPretService:
         photos: Mapping[str, str | None] | None,
     ) -> None:
         """Valide et normalise le formulaire avant de le transmettre au stockage."""
-        nom = (nom or "").strip()
-        localisation = (localisation or "").strip()
-
-        if not nom:
-            raise ValueError("Le nom de l'ordinateur est obligatoire.")
-        if not localisation:
-            raise ValueError("La localisation est obligatoire.")
-        if entite_id is None:
-            raise ValueError("L'identifiant de l'entité est obligatoire.")
-
-        photos_data = []
-        for type_photo, image_path in (photos or {}).items():
-            if image_path:
-                image_data, image_type = preparer_photo(image_path)
-                photos_data.append(
-                    {
-                        "type_photo": type_photo,
-                        "image_data": image_data,
-                        "image_type": image_type,
-                    }
-                )
+        nom, localisation = self._valider_champs(nom, localisation, entite_id)
 
         self.storage.creer_materiel(
             {
@@ -94,6 +114,48 @@ class SuiviPretService:
                 "descriptif": (descriptif or "").strip() or None,
                 "remarque": (remarque or "").strip() or None,
                 "entite_id": int(entite_id),
-                "photos": photos_data,
+                "photos": self._preparer_photos_data(photos),
             }
         )
+
+    def modifier_materiel(
+        self,
+        materiel_id: int,
+        nom: str,
+        modele: str,
+        annee: float | int | None,
+        etiquette_ulco: str,
+        etat: str,
+        localisation: str,
+        descriptif: str,
+        remarque: str,
+        entite_id: float | int | None,
+        photos: Mapping[str, str | None] | None,
+    ) -> None:
+        """Valide et transmet la mise à jour au stockage."""
+        nom, localisation = self._valider_champs(nom, localisation, entite_id)
+
+        self.storage.modifier_materiel(
+            int(materiel_id),
+            {
+                "nom": nom,
+                "modele": (modele or "").strip() or None,
+                "annee": int(annee) if annee is not None else None,
+                "etiquette_ulco": (etiquette_ulco or "").strip() or None,
+                "etat": etat,
+                "localisation": localisation,
+                "descriptif": (descriptif or "").strip() or None,
+                "remarque": (remarque or "").strip() or None,
+                "entite_id": int(entite_id),
+                "photos": self._preparer_photos_data(photos),
+            },
+        )
+
+    def ajouter_photos_analyse(
+        self,
+        materiel_id: int,
+        photos: Mapping[str, str | None] | None,
+    ) -> None:
+        """Enregistre les photos d'analyse (est_avant=FALSE) pour un matériel."""
+        photos_data = self._preparer_photos_data(photos)
+        self.storage.ajouter_photos_analyse(int(materiel_id), photos_data)
