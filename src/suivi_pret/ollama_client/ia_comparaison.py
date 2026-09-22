@@ -1,5 +1,6 @@
 import json
 import argparse
+import math
 from io import BytesIO
 from typing import Any
 
@@ -21,6 +22,52 @@ PROMPT_TEMPLATE = (
     "Réponds STRICTEMENT en JSON, sans texte autour : "
     '{{"zones": [{{"element": "string", "anomalie": "string", "gravite": "aucune|legere|marquee|importante", "bbox": [0,0,0,0]}}]}}'
 )
+
+GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
+CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
+
+
+def _refuser_constante_json(valeur: str) -> None:
+    raise ValueError(f"constante JSON non standard : {valeur}")
+
+
+def valider_reponse_json(reponse: str) -> dict[str, Any]:
+    """Parse et valide strictement la réponse JSON produite par le VLM."""
+    try:
+        donnees = json.loads(reponse, parse_constant=_refuser_constante_json)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("JSON syntaxiquement invalide") from exc
+
+    if not isinstance(donnees, dict) or set(donnees) != {"zones"}:
+        raise ValueError("la racine doit être un objet contenant uniquement 'zones'")
+    if not isinstance(donnees["zones"], list):
+        raise ValueError("'zones' doit être une liste")
+
+    for index, zone in enumerate(donnees["zones"]):
+        if not isinstance(zone, dict) or set(zone) != CHAMPS_ZONE_ATTENDUS:
+            raise ValueError(
+                f"la zone {index} doit contenir exactement : "
+                "element, anomalie, gravite et bbox"
+            )
+        if not isinstance(zone["element"], str) or not isinstance(zone["anomalie"], str):
+            raise ValueError(f"les champs texte de la zone {index} sont invalides")
+        if zone["gravite"] not in GRAVITES_AUTORISEES:
+            raise ValueError(f"gravité inconnue pour la zone {index}")
+
+        bbox = zone["bbox"]
+        if (
+            not isinstance(bbox, list)
+            or len(bbox) != 4
+            or any(isinstance(coord, bool) or not isinstance(coord, (int, float)) for coord in bbox)
+            or any(not math.isfinite(coord) or coord < 0 for coord in bbox)
+            or bbox[0] > bbox[2]
+            or bbox[1] > bbox[3]
+        ):
+            raise ValueError(
+                f"la bbox de la zone {index} doit contenir quatre coordonnées valides"
+            )
+
+    return donnees
 
 def recuperer_photos(
     materiel_id: int,
@@ -123,10 +170,15 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
         return {"zone": zone, "error": str(exc), "zones": []}
 
     try:
-        parsed = json.loads(result.response)
-    except json.JSONDecodeError:
+        parsed = valider_reponse_json(result.response)
+    except ValueError as exc:
         print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
-        return {"zone": zone, "error": "JSON invalide", "zones": []}
+        return {
+            "zone": zone,
+            "zone_analysee": zone,
+            "error": str(exc),
+            "zones": [],
+        }
 
     parsed["zone_analysee"] = zone
     if parsed.get("zones"):
