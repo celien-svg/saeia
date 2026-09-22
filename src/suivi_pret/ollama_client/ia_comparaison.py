@@ -1,15 +1,14 @@
 import json
 import argparse
+import math
 from io import BytesIO
 from typing import Any
 
 import psycopg
 from PIL import Image, ImageDraw
 
-from ..config import settings
+from ..config import get_settings
 from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
-
-MODEL = settings.OLLAMA_VLM_MODEL
 
 PROMPT_TEMPLATE = (
     "Voici deux photos du même {zone} d'un ordinateur portable. "
@@ -22,11 +21,58 @@ PROMPT_TEMPLATE = (
     '{{"zones": [{{"element": "string", "anomalie": "string", "gravite": "aucune|legere|marquee|importante", "bbox": [0,0,0,0]}}]}}'
 )
 
+GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
+CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
+
+
+def _refuser_constante_json(valeur: str) -> None:
+    raise ValueError(f"constante JSON non standard : {valeur}")
+
+
+def valider_reponse_json(reponse: str) -> dict[str, Any]:
+    """Parse et valide strictement la réponse JSON produite par le VLM."""
+    try:
+        donnees = json.loads(reponse, parse_constant=_refuser_constante_json)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("JSON syntaxiquement invalide") from exc
+
+    if not isinstance(donnees, dict) or set(donnees) != {"zones"}:
+        raise ValueError("la racine doit être un objet contenant uniquement 'zones'")
+    if not isinstance(donnees["zones"], list):
+        raise ValueError("'zones' doit être une liste")
+
+    for index, zone in enumerate(donnees["zones"]):
+        if not isinstance(zone, dict) or set(zone) != CHAMPS_ZONE_ATTENDUS:
+            raise ValueError(
+                f"la zone {index} doit contenir exactement : "
+                "element, anomalie, gravite et bbox"
+            )
+        if not isinstance(zone["element"], str) or not isinstance(zone["anomalie"], str):
+            raise ValueError(f"les champs texte de la zone {index} sont invalides")
+        if zone["gravite"] not in GRAVITES_AUTORISEES:
+            raise ValueError(f"gravité inconnue pour la zone {index}")
+
+        bbox = zone["bbox"]
+        if (
+            not isinstance(bbox, list)
+            or len(bbox) != 4
+            or any(isinstance(coord, bool) or not isinstance(coord, (int, float)) for coord in bbox)
+            or any(not math.isfinite(coord) or coord < 0 for coord in bbox)
+            or bbox[0] > bbox[2]
+            or bbox[1] > bbox[3]
+        ):
+            raise ValueError(
+                f"la bbox de la zone {index} doit contenir quatre coordonnées valides"
+            )
+
+    return donnees
+
 def recuperer_photos(
     materiel_id: int,
     type_photo: str | None = None,
 ) -> dict[bool, dict[str, dict[str, Any]]]:
     """Charge les photos d'un matériel, séparées par avant/après en les metant a la fin dans une variable pour créer ensuite un dictionnaire pour faciliter la méthode de comparaison."""
+    settings = get_settings()
     requete = (
         "SELECT id_photo, type_photo, image_data, image_type, est_avant "
         "FROM photos_materiels WHERE id_materiel = %s"
@@ -85,6 +131,7 @@ def construire_categories(
 
 def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
     """Remplace en base l'image de restitution par sa version annotée."""
+    settings = get_settings()
     try:
         with psycopg.connect(
             host=settings.POSTGRES_HOST,
@@ -103,7 +150,11 @@ def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
         raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
 
 
-def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict:
+def analyser_categorie(
+    client: OllamaWrapper,
+    categorie: dict[str, Any],
+    model: str,
+) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
     zone = categorie["zone"]
     before_photo = categorie["before"]
@@ -113,7 +164,7 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
 
     try:
         result = client.compare_images(
-            model=MODEL,
+            model=model,
             prompt=PROMPT_TEMPLATE.format(zone=zone),
             image_before=before_photo["image_data"],
             image_after=after_photo["image_data"],
@@ -123,10 +174,15 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
         return {"zone": zone, "error": str(exc), "zones": []}
 
     try:
-        parsed = json.loads(result.response)
-    except json.JSONDecodeError:
+        parsed = valider_reponse_json(result.response)
+    except ValueError as exc:
         print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
-        return {"zone": zone, "error": "JSON invalide", "zones": []}
+        return {
+            "zone": zone,
+            "zone_analysee": zone,
+            "error": str(exc),
+            "zones": [],
+        }
 
     parsed["zone_analysee"] = zone
     if parsed.get("zones"):
@@ -193,6 +249,7 @@ def main():
     )
     args = parser.parse_args()
 
+    settings = get_settings()
     client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
 
     print("Serveur dispo :", client.is_server_running())
@@ -210,7 +267,11 @@ def main():
         return
 
     for categorie in categories:
-        resultat = analyser_categorie(client, categorie)
+        resultat = analyser_categorie(
+            client,
+            categorie,
+            model=settings.OLLAMA_VLM_MODEL,
+        )
         rapport_global.append(resultat)
 
 

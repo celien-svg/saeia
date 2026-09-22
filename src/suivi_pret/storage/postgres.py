@@ -7,7 +7,7 @@ from typing import Any, Mapping
 import psycopg
 from psycopg.rows import DictRow, dict_row
 
-from ..config import Settings
+from ..config import Settings, get_settings
 from .base import (
     DuplicateMaterielError,
     EntityNotFoundError,
@@ -21,7 +21,7 @@ class PostgresStorage(Storage):
     """Stocke les matériels dans la base PostgreSQL configurée."""
 
     def __init__(self, config: Settings | None = None) -> None:
-        self.config = config if config is not None else Settings()  # pyright: ignore[reportCallIssue]
+        self.config = config if config is not None else get_settings()
 
     def _connexion(self) -> psycopg.Connection[DictRow]:
         """Ouvre une connexion produisant des lignes sous forme de dictionnaires."""
