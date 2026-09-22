@@ -2,14 +2,12 @@
 
 import html
 import logging
-import os
 from io import BytesIO
 
 import gradio as gr
 from PIL import Image
 
 from .service import SuiviPretService
-from .ollama_client.vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
 from .storage import (
     DuplicateMaterielError,
     EntityNotFoundError,
@@ -108,54 +106,6 @@ def ajouter_photos_analyse(id_materiel, *photos):
 
     gr.Info("Photos d'analyse enregistrées.")
     return "✅ Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
-
-
-def lancer_analyse(id_materiel, *photos):
-    """Compare les photos avant/après et affiche le rapport de l'IA."""
-    if id_materiel is None:
-        raise gr.Error("Aucun ordinateur n'est sélectionné.")
-
-    anciennes = photos[:6]
-    nouvelles = photos[6:]
-    client = OllamaWrapper(timeout_s=180.0)
-    modele = os.environ.get("VLM_MODEL", "qwen3-vl:8b-instruct")
-    rapports = []
-
-    for type_photo, ancienne, nouvelle in zip(TYPES_PHOTOS, anciennes, nouvelles):
-        if ancienne is None or nouvelle is None:
-            continue
-
-        if isinstance(ancienne, Image.Image):
-            image_avant = BytesIO()
-            ancienne.save(image_avant, format="PNG")
-            image_avant = image_avant.getvalue()
-        else:
-            image_avant = ancienne
-
-        prompt = (
-            f"Compare les deux photos de la zone '{type_photo}' d'un ordinateur. "
-            "La première image est l'état avant le prêt et la seconde l'état après. "
-            "Identifie uniquement les dégradations nouvelles visibles. "
-            "Réponds en français avec une conclusion claire et concise."
-        )
-        try:
-            resultat = client.compare_images(
-                model=modele,
-                prompt=prompt,
-                image_before=image_avant,
-                image_after=nouvelle,
-            )
-        except (OllamaConnectionError, OllamaResponseError, OSError) as exc:
-            logger.exception("Erreur lors de l'analyse de la zone %s", type_photo)
-            rapports.append(f"**{type_photo}** : erreur lors de l'analyse : {exc}")
-            continue
-
-        rapports.append(f"**{type_photo}** :\n{resultat.response.strip()}")
-
-    if not rapports:
-        return "Aucune paire de photos avant/après complète à analyser."
-
-    return "\n\n".join(rapports)
 
 
 def photos_en_data_uri(photos):
@@ -395,16 +345,6 @@ CSS = """
     margin: 0 !important;
 }
 
-#liste .colonne-nom { flex: 3 1 0 !important; }
-#liste .colonne-etat,
-#liste .colonne-localisation { flex: 2 1 0 !important; }
-#liste .colonne-action { flex: 1 1 0 !important; min-width: 0; }
-
-#liste .entetes-ordinateurs > *,
-#liste .ligne-ordinateur > * {
-    min-width: 0;
-}
-
 .ligne-ordinateur p {
     color: white !important;
     font-size: 13px;
@@ -474,7 +414,6 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
             with gr.Row():
                 bouton_ajouter_photos = gr.Button("Ajouter les photos", variant="primary")
-                bouton_lancer_analyse = gr.Button("Lancer l'analyse", variant="primary")
                 bouton_retour_analyse = gr.Button("Retour à la liste")
 
             # Zone de réponse de l'IA
@@ -502,12 +441,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
                 with gr.Column(elem_id="liste"):
                     with gr.Row(elem_classes="entetes-ordinateurs"):
-                        gr.Markdown("Nom", elem_classes="colonne-nom")
-                        gr.Markdown("État", elem_classes="colonne-etat")
-                        gr.Markdown("Localisation", elem_classes="colonne-localisation")
-                        gr.Markdown("Modifier", elem_classes="colonne-action")
-                        gr.Markdown("Supprimer", elem_classes="colonne-action")
-                        gr.Markdown("Analyse", elem_classes="colonne-action")
+                        gr.Markdown("Nom", scale=3)
+                        gr.Markdown("État", scale=2)
+                        gr.Markdown("Localisation", scale=2)
+                        gr.Markdown("Actions", scale=3)
 
                     if not materiels:
                         gr.Markdown(
@@ -525,20 +462,20 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             elem_classes="ligne-ordinateur",
                             key=f"materiel-{identifiant}",
                         ):
-                            gr.Markdown(echapper(materiel["nom"]), elem_classes="colonne-nom")
-                            gr.Markdown(echapper(materiel["etat"]), elem_classes="colonne-etat")
-                            gr.Markdown(echapper(materiel["localisation"]), elem_classes="colonne-localisation")
+                            gr.Markdown(echapper(materiel["nom"]), scale=3)
+                            gr.Markdown(echapper(materiel["etat"]), scale=2)
+                            gr.Markdown(echapper(materiel["localisation"]), scale=2)
 
                             bouton_modifier = gr.Button(
-                                "Modifier", elem_classes="colonne-action",
+                                "Modifier", scale=1,
                                 key=f"modifier-{identifiant}",
                             )
                             bouton_supprimer = gr.Button(
-                                "Supprimer", elem_classes="colonne-action",
+                                "Supprimer", scale=1,
                                 key=f"supprimer-{identifiant}",
                             )
                             bouton_analyse = gr.Button(
-                                "Analyse", elem_classes="colonne-action",
+                                "Analyse", scale=1,
                                 key=f"analyse-{identifiant}",
                             )
 
@@ -678,12 +615,6 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         fn=ajouter_photos_analyse,
         inputs=[analyse_id_materiel, *nouvelles_images],
         outputs=[statut_photos_analyse],
-    )
-
-    bouton_lancer_analyse.click(
-        fn=lancer_analyse,
-        inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
-        outputs=[reponse_ia],
     )
 
     # Liste -> formulaire ajout

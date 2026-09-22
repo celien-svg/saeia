@@ -9,6 +9,15 @@ nouvelles : rayure, tâche, déformation, casse, etc.
 
 Le suivi des tâches et des user stories est disponible sur le [tableau Trello](https://trello.com/b/3we9QZwI/sae-ia).
 
+## Documentation du Projet (Référentiel Qualité R5-08A)
+
+La documentation complète du projet est rédigée selon le cours **R5-08A – Qualité de Développement** (IUTLCO Informatique) :
+
+- 📚 [**Portail & Sommaire Documentaire**](docs/README.md)
+- 🎯 [**Qualité Logicielle (ISO/IEC 25010) & Inspections (TDD / BDD Gherkin)**](docs/qualite_developpement.md)
+- ⚙️ [**Documentation Technique (Architecture, Modélisation, Build & Déploiement)**](docs/documentation_technique.md)
+- 📖 [**Documentation Utilisateur (Manuel pas à pas, Tutoriel 5 min & FAQ)**](docs/documentation_utilisateur.md)
+
 ## Objectif
 
 Pour chaque zone de l'ordinateur (par exemple l'écran ou le clavier), le système :
