@@ -530,12 +530,11 @@ class OllamaWrapper:
             "prompt": prompt,
             "images": images_b64,   # [avant, après] dans cet ordre
             "stream": False,
-            "format": "json",       # force une sortie JSON structurée 
         }
         if system is not None:
             body["system"] = system
         
-         # Ajoute les options avancées si fournies.
+        # Ajoute les options avancées si fournies.
         if options is not None:
             body["options"] = dict(options)
         payload = self._http_request_json("POST", "/api/generate", body=body)

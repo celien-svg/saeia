@@ -125,9 +125,41 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
     try:
         parsed = json.loads(result.response)
     except json.JSONDecodeError:
-        print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
-        return {"zone": zone, "error": "JSON invalide", "zones": []}
+        raw = result.response.strip()
+        print(f"  JSON invalide pour la zone '{zone}' : {raw!r}")
+        return {
+            "zone": zone,
+            "error": "JSON invalide",
+            "zones": [],
+            "raw_response": raw,
+        }
 
+    if not isinstance(parsed, dict):
+        return {
+            "zone": zone,
+            "error": "La réponse JSON n'est pas un objet.",
+            "zones": [],
+            "raw_response": str(result.response).strip(),
+        }
+
+    zones = parsed.get("zones", [])
+    if not isinstance(zones, list):
+        return {"zone": zone, "error": "Le champ 'zones' est invalide.", "zones": []}
+
+    zones_valides = []
+    for index, anomalie in enumerate(zones, start=1):
+        if not isinstance(anomalie, dict):
+            continue
+        zones_valides.append(
+            {
+                "element": anomalie.get("element", f"Élément {index}"),
+                "anomalie": anomalie.get("anomalie", "Anomalie non détaillée"),
+                "gravite": anomalie.get("gravite", "inconnue"),
+                "bbox": anomalie.get("bbox", []),
+            }
+        )
+
+    parsed["zones"] = zones_valides
     parsed["zone_analysee"] = zone
     if parsed.get("zones"):
         image_annotee = affichage_defaut(
@@ -145,20 +177,42 @@ def conversion_texte(categorie: dict) -> str:
     """
     convertie le json en texte pour l'interface ce qui est le travail demandé.
     """
+    zone = categorie.get("zone_analysee", categorie.get("zone", "inconnue"))
+
     if "error" in categorie:
-        return f"Zone {categorie['zone_analysee']} : Erreur - {categorie['error']}"
+        return f"Zone {zone} : Erreur - {categorie.get('error', 'inconnue')}"
 
     zones = categorie.get("zones", [])
-    if not zones:
-        return f"Zone {categorie['zone_analysee']} : Aucune dégradation détectée."
+    if "raw_response" in categorie and categorie["raw_response"]:
+        return f"Zone {zone} : {categorie['raw_response']}"
 
-    texte = f"Zone {categorie['zone_analysee']} :\n"
+    if not zones:
+        return f"Zone {zone} : Aucune dégradation détectée."
+
+    texte = f"Zone {zone} :\n"
     for z in zones:
         texte += (
-            f"- Élément : {z['element']}, Anomalie : {z['anomalie']}, "
-            f"Gravité : {z['gravite']}, BBox : {z['bbox']}\n"
+            f"- Élément : {z.get('element', 'inconnu')}, "
+            f"Anomalie : {z.get('anomalie', 'inconnue')}, "
+            f"Gravité : {z.get('gravite', 'inconnue')}, "
+            f"BBox : {z.get('bbox', [])}\n"
         )
     return texte.strip()
+
+
+def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
+    """Analyse les photos d'un matériel et retourne le rapport affichable."""
+    client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
+    if not client.is_server_running():
+        return "Ollama est inaccessible. Vérifiez que le serveur est démarré."
+
+    categories = construire_categories(materiel_id, type_photo)
+    if not categories:
+        return "Aucune photo commune trouvée pour ce matériel."
+
+    rapports = [analyser_categorie(client, categorie) for categorie in categories]
+    resultats = [conversion_texte(rapport) for rapport in rapports]
+    return "\n\n".join(resultats)
 
 def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
     """Dessine en rouge les BBoxes des défaut de l'ordinateur et retourne l'image annotée en octets."""
