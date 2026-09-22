@@ -92,7 +92,7 @@ class ValidationJsonTest(TestCase):
             "after": {"image_data": b"apres", "id_photo": 1},
         }
 
-        resultat = analyser_categorie(client, categorie)
+        resultat = analyser_categorie(client, categorie, model="test-model")
 
         self.assertEqual(resultat["zone_analysee"], "ecran")
         self.assertEqual(resultat["zones"], [])

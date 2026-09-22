@@ -7,10 +7,8 @@ from typing import Any
 import psycopg
 from PIL import Image, ImageDraw
 
-from ..config import settings
+from ..config import get_settings
 from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
-
-MODEL = settings.OLLAMA_VLM_MODEL
 
 PROMPT_TEMPLATE = (
     "Voici deux photos du même {zone} d'un ordinateur portable. "
@@ -74,6 +72,7 @@ def recuperer_photos(
     type_photo: str | None = None,
 ) -> dict[bool, dict[str, dict[str, Any]]]:
     """Charge les photos d'un matériel, séparées par avant/après en les metant a la fin dans une variable pour créer ensuite un dictionnaire pour faciliter la méthode de comparaison."""
+    settings = get_settings()
     requete = (
         "SELECT id_photo, type_photo, image_data, image_type, est_avant "
         "FROM photos_materiels WHERE id_materiel = %s"
@@ -132,6 +131,7 @@ def construire_categories(
 
 def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
     """Remplace en base l'image de restitution par sa version annotée."""
+    settings = get_settings()
     try:
         with psycopg.connect(
             host=settings.POSTGRES_HOST,
@@ -150,7 +150,11 @@ def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
         raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
 
 
-def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict:
+def analyser_categorie(
+    client: OllamaWrapper,
+    categorie: dict[str, Any],
+    model: str,
+) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
     zone = categorie["zone"]
     before_photo = categorie["before"]
@@ -160,7 +164,7 @@ def analyser_categorie(client: OllamaWrapper, categorie: dict[str, Any]) -> dict
 
     try:
         result = client.compare_images(
-            model=MODEL,
+            model=model,
             prompt=PROMPT_TEMPLATE.format(zone=zone),
             image_before=before_photo["image_data"],
             image_after=after_photo["image_data"],
@@ -245,6 +249,7 @@ def main():
     )
     args = parser.parse_args()
 
+    settings = get_settings()
     client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
 
     print("Serveur dispo :", client.is_server_running())
@@ -262,7 +267,11 @@ def main():
         return
 
     for categorie in categories:
-        resultat = analyser_categorie(client, categorie)
+        resultat = analyser_categorie(
+            client,
+            categorie,
+            model=settings.OLLAMA_VLM_MODEL,
+        )
         rapport_global.append(resultat)
 
 
