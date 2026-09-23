@@ -25,4 +25,7 @@ class Settings(BaseSettings):
 
 
 # permet de garder en cache la configuration pour éviter de la recharger à chaque appel
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """Charge et mémorise la configuration au premier appel."""
+    return Settings()

@@ -72,6 +72,7 @@ def recuperer_photos(
     type_photo: str | None = None,
 ) -> dict[bool, dict[str, dict[str, Any]]]:
     """Charge les photos d'un matériel, séparées par avant/après."""
+    settings = get_settings()
     requete = (
         "SELECT id_photo, type_photo, image_data, image_type, est_avant "
         "FROM photos_materiels WHERE id_materiel = %s"
@@ -173,43 +174,16 @@ def analyser_categorie(
         return {"zone": zone, "error": str(exc), "zones": []}
 
     try:
-        parsed = json.loads(result.response)
-    except json.JSONDecodeError:
-        raw = result.response.strip()
-        print(f"  JSON invalide pour la zone '{zone}' : {raw!r}")
+        parsed = valider_reponse_json(result.response)
+    except ValueError as exc:
+        print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
         return {
             "zone": zone,
-            "error": "JSON invalide",
+            "zone_analysee": zone,
+            "error": str(exc),
             "zones": [],
-            "raw_response": raw,
         }
 
-    if not isinstance(parsed, dict):
-        return {
-            "zone": zone,
-            "error": "La réponse JSON n'est pas un objet.",
-            "zones": [],
-            "raw_response": str(result.response).strip(),
-        }
-
-    zones = parsed.get("zones", [])
-    if not isinstance(zones, list):
-        return {"zone": zone, "error": "Le champ 'zones' est invalide.", "zones": []}
-
-    zones_valides = []
-    for index, anomalie in enumerate(zones, start=1):
-        if not isinstance(anomalie, dict):
-            continue
-        zones_valides.append(
-            {
-                "element": anomalie.get("element", f"Élément {index}"),
-                "anomalie": anomalie.get("anomalie", "Anomalie non détaillée"),
-                "gravite": anomalie.get("gravite", "inconnue"),
-                "bbox": anomalie.get("bbox", []),
-            }
-        )
-
-    parsed["zones"] = zones_valides
     parsed["zone_analysee"] = zone
     if parsed.get("zones"):
         image_annotee = affichage_defaut(
@@ -252,6 +226,7 @@ def conversion_texte(categorie: dict) -> str:
 
 def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
+    settings = get_settings()
     client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
     if not client.is_server_running():
         return "Ollama est inaccessible. Vérifiez que le serveur est démarré."
@@ -260,7 +235,14 @@ def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
     if not categories:
         return "Aucune photo commune trouvée pour ce matériel."
 
-    rapports = [analyser_categorie(client, categorie) for categorie in categories]
+    rapports = [
+        analyser_categorie(
+            client,
+            categorie,
+            model=settings.OLLAMA_VLM_MODEL,
+        )
+        for categorie in categories
+    ]
     resultats = [conversion_texte(rapport) for rapport in rapports]
     return "\n\n".join(resultats)
 
