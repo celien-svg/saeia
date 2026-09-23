@@ -2,14 +2,13 @@
 
 import html
 import logging
-import os
 from io import BytesIO
 
 import gradio as gr
 from PIL import Image
 
+from .ollama_client.ia_comparaison import analyser_materiel
 from .service import SuiviPretService
-from .ollama_client.vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
 from .storage import (
     DuplicateMaterielError,
     EntityNotFoundError,
@@ -107,7 +106,7 @@ def ajouter_photos_analyse(id_materiel, *photos):
         raise gr.Error(str(exc)) from exc
 
     gr.Info("Photos d'analyse enregistrées.")
-    return "✅ Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
+    return " Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
 
 
 def lancer_analyse(id_materiel, *photos):
@@ -115,56 +114,28 @@ def lancer_analyse(id_materiel, *photos):
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
-    anciennes = photos[:6]
-    nouvelles = photos[6:]
-    client = OllamaWrapper(timeout_s=180.0)
-    modele = os.environ.get("VLM_MODEL", "qwen3-vl:8b-instruct")
-    rapports = []
-
-    for type_photo, ancienne, nouvelle in zip(TYPES_PHOTOS, anciennes, nouvelles):
-        if ancienne is None or nouvelle is None:
-            continue
-
-        if isinstance(ancienne, Image.Image):
-            image_avant = BytesIO()
-            ancienne.save(image_avant, format="PNG")
-            image_avant = image_avant.getvalue()
-        else:
-            image_avant = ancienne
-
-        prompt = (
-            f"Compare les deux photos de la zone '{type_photo}' d'un ordinateur. "
-            "La première image est l'état avant le prêt et la seconde l'état après. "
-            "Identifie uniquement les dégradations nouvelles visibles. "
-            "Réponds en français avec une conclusion claire et concise."
-        )
-        try:
-            resultat = client.compare_images(
-                model=modele,
-                prompt=prompt,
-                image_before=image_avant,
-                image_after=nouvelle,
-            )
-        except (OllamaConnectionError, OllamaResponseError, OSError) as exc:
-            logger.exception("Erreur lors de l'analyse de la zone %s", type_photo)
-            rapports.append(f"**{type_photo}** : erreur lors de l'analyse : {exc}")
-            continue
-
-        rapports.append(f"**{type_photo}** :\n{resultat.response.strip()}")
-
-    if not rapports:
-        return "Aucune paire de photos avant/après complète à analyser."
-
-    return "\n\n".join(rapports)
+    try:
+        return analyser_materiel(id_materiel)
+    except Exception as exc:
+        logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
 
 
 def photos_en_data_uri(photos):
     """Convertit les photos enregistrées en images affichables par Gradio."""
     photos_par_type = {}
-    for photo in photos:
-        with Image.open(BytesIO(photo["image_data"])) as image:
-            image.thumbnail((1024, 1024))
-            photos_par_type[photo["type_photo"]] = image.copy()
+    for photo in photos or []:
+        image_data = photo.get("image_data")
+        type_photo = photo.get("type_photo")
+        if image_data is None or type_photo is None:
+            continue
+        try:
+            with Image.open(BytesIO(image_data)) as image:
+                image.thumbnail((1024, 1024))
+                photos_par_type[type_photo] = image.copy()
+        except Exception:
+            logger.warning("Photo invalide ignorée pour le type '%s'", type_photo)
+            continue
     return tuple(photos_par_type.get(type_photo) for type_photo in TYPES_PHOTOS)
 
 
