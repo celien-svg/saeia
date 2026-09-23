@@ -12,8 +12,10 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
     depends_on:
-      - pg
-      - ollama
+      pg:
+        condition: service_healthy
+      ollama:
+        condition: service_started
     volumes:
       - ./src/suivi_pret:/app/src/suivi_pret
 
