@@ -122,7 +122,8 @@ async def analyser_categorie(
             after_photo["image_data"],
             parsed["zones"],
         )
-        storage.enregistrer_image_annotee(
+        await asyncio.to_thread(
+            storage.enregistrer_image_annotee,
             after_photo["id_photo"],
             image_annotee,
         )
@@ -164,7 +165,10 @@ async def analyser_materiel(
 ) -> str:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
     settings = get_settings()
-    photos = storage.recuperer_photos_comparaison(materiel_id, type_photo)
+    # Le stockage ouvre et ferme sa connexion dans le thread de travail.
+    photos = await asyncio.to_thread(
+        storage.recuperer_photos_comparaison, materiel_id, type_photo,
+    )
     categories = construire_categories(photos)
     if not categories:
         return "Aucune photo commune trouvée pour ce matériel."
@@ -220,9 +224,10 @@ async def main():
     settings = get_settings()
     storage = PostgresStorage(settings)
     rapport_global = []
-    categories = construire_categories(
-        storage.recuperer_photos_comparaison(args.materiel_id, args.type_photo),
+    photos = await asyncio.to_thread(
+        storage.recuperer_photos_comparaison, args.materiel_id, args.type_photo,
     )
+    categories = construire_categories(photos)
     if not categories:
         print("Aucune photo commune trouvée pour ces matériels.")
         return

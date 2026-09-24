@@ -4,7 +4,9 @@ from io import BytesIO
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
+import asyncio
 import json
+import threading
 
 import psycopg
 from PIL import Image
@@ -13,6 +15,7 @@ from src.suivi_pret.ollama_client.ia_comparaison import (
     analyser_categorie,
     analyser_materiel,
     construire_categories,
+    main,
 )
 from src.suivi_pret.storage.base import Storage, StorageError
 from src.suivi_pret.storage.postgres import PostgresStorage
@@ -70,6 +73,19 @@ class PostgresAnalyseTest(TestCase):
 
 
 class AnalyseStockageTest(IsolatedAsyncioTestCase):
+    def verifier_boucle_disponible(self):
+        """Construit une vérification appelée depuis une opération de stockage."""
+        boucle = asyncio.get_running_loop()
+        thread_boucle = threading.get_ident()
+
+        def verifier(*args):
+            self.assertNotEqual(threading.get_ident(), thread_boucle)
+            # Le stockage attend cette tâche : elle doit pouvoir avancer sur la boucle.
+            tache = asyncio.run_coroutine_threadsafe(asyncio.sleep(0), boucle)
+            tache.result(timeout=2)
+
+        return verifier
+
     async def test_annote_et_sauvegarde_uniquement_la_photo_apres(self):
         image = BytesIO()
         Image.new("RGB", (10, 10), "white").save(image, format="PNG")
@@ -79,6 +95,7 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
             "after": {"id_photo": 2, "image_data": image.getvalue()},
         }
         storage = Mock(spec=Storage)
+        storage.enregistrer_image_annotee.side_effect = self.verifier_boucle_disponible()
         client = Mock()
         client.compare_images = AsyncMock(return_value=SimpleNamespace(
             response=json.dumps({"zones": [{
@@ -99,10 +116,42 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
 
     async def test_aucune_paire_ne_declenche_pas_ollama(self):
         storage = Mock(spec=Storage)
-        storage.recuperer_photos_comparaison.return_value = []
+        verifier = self.verifier_boucle_disponible()
+
+        def lire(*args):
+            verifier(*args)
+            return []
+
+        storage.recuperer_photos_comparaison.side_effect = lire
         module = "src.suivi_pret.ollama_client.ia_comparaison"
         with patch(f"{module}.get_settings"), patch(f"{module}.OllamaVLM") as vlm:
             resultat = await analyser_materiel(12, "ecran", storage=storage)
         storage.recuperer_photos_comparaison.assert_called_once_with(12, "ecran")
         vlm.assert_not_called()
         self.assertIn("Aucune photo commune", resultat)
+
+    async def test_erreur_de_lecture_remonte_depuis_le_thread(self):
+        storage = Mock(spec=Storage)
+        erreur = StorageError("Base indisponible")
+        storage.recuperer_photos_comparaison.side_effect = erreur
+        with patch("src.suivi_pret.ollama_client.ia_comparaison.get_settings"):
+            with self.assertRaises(StorageError) as resultat:
+                await analyser_materiel(12, storage=storage)
+        self.assertIs(resultat.exception, erreur)
+
+    async def test_commande_cli_lit_hors_de_la_boucle(self):
+        storage = Mock(spec=Storage)
+        verifier = self.verifier_boucle_disponible()
+
+        def lire(*args):
+            verifier(*args)
+            return []
+
+        storage.recuperer_photos_comparaison.side_effect = lire
+        with (
+            patch("sys.argv", ["analyse", "--materiel-id", "12", "--type-photo", "ecran"]),
+            patch("src.suivi_pret.ollama_client.ia_comparaison.get_settings"),
+            patch("src.suivi_pret.storage.postgres.PostgresStorage", return_value=storage),
+        ):
+            await main()
+        storage.recuperer_photos_comparaison.assert_called_once_with(12, "ecran")
