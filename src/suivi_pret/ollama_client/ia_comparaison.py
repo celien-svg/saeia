@@ -2,6 +2,7 @@ import json
 import argparse
 import math
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -10,16 +11,7 @@ from PIL import Image, ImageDraw
 from ..config import get_settings
 from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
 
-PROMPT_TEMPLATE = (
-    "Voici deux photos du même {zone} d'un ordinateur portable. "
-    "La PREMIÈRE image montre l'état AVANT le prêt (référence). "
-    "La SECONDE image montre l'état APRÈS restitution. "
-    "Compare-les et identifie toute dégradation physique nouvelle "
-    "(rayure, déformation, casse, tache...). "
-    "Si aucune différence n'est visible, renvoie une liste vide. "
-    "Réponds STRICTEMENT en JSON, sans texte autour : "
-    '{{"zones": [{{"element": "string", "anomalie": "string", "gravite": "aucune|legere|marquee|importante", "bbox": [0,0,0,0]}}]}}'
-)
+PROMPT_TEMPLATE = (Path(__file__).with_name("prompt.md")).read_text(encoding="utf-8")
 
 GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
 CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
