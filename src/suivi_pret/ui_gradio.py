@@ -110,7 +110,7 @@ def ajouter_photos_analyse(id_materiel, *photos):
 
 
 def lancer_analyse(id_materiel, *photos):
-    """Compare les photos avant/après et affiche le rapport de l'IA."""
+    """Compare les photos avant/après et prépare le rapport sans le sauvegarder."""
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
@@ -119,6 +119,45 @@ def lancer_analyse(id_materiel, *photos):
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
+
+
+def sauvegarder_rapport(id_materiel, rapport):
+    """Sauvegarde explicitement le rapport affiché dans la page d'analyse."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+    if not rapport or rapport.startswith("Aucun rapport enregistré"):
+        gr.Warning("Lancez une analyse avant de sauvegarder un rapport.")
+        return "Aucun rapport à sauvegarder."
+
+    try:
+        service.enregistrer_rapport(id_materiel, rapport)
+    except StorageError as exc:
+        logger.exception("Erreur lors de l'enregistrement du rapport %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    gr.Info("Rapport sauvegardé.")
+    return "Rapport sauvegardé dans l'historique."
+
+
+def afficher_liste_rapports(id_materiel):
+    """Affiche l'historique des rapports du matériel sélectionné."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+
+    try:
+        rapports = service.lister_rapports(id_materiel)
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des rapports %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    if not rapports:
+        return "Aucun rapport sauvegardé pour cet ordinateur."
+
+    lignes = ["### Rapports sauvegardés"]
+    for rapport in rapports:
+        date = rapport["cree_le"].strftime("%d/%m/%Y %H:%M")
+        lignes.append(f"#### Rapport du {date}\n\n{rapport['contenu']}")
+    return "\n\n---\n\n".join(lignes)
 
 
 def photos_en_data_uri(photos):
@@ -145,6 +184,9 @@ def ouvrir_analyse(id_materiel, nom):
         anciennes_photos = photos_en_data_uri(
             service.recuperer_photos(id_materiel)
         )
+        photos_analyse = photos_en_data_uri(
+            service.recuperer_photos_analyse(id_materiel)
+        )
     except StorageError as exc:
         logger.exception("Erreur lors du chargement des photos du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -155,9 +197,10 @@ def ouvrir_analyse(id_materiel, nom):
         id_materiel,
         gr.update(value=f"## Analyse de l'ordinateur : {echapper(nom)}"),
         *anciennes_photos,
-        *vider_photos_analyse(),
+        *photos_analyse,
         "",
-        "",  # zone réponse IA
+        "",
+        "",
     )
 
 
@@ -172,6 +215,7 @@ def retour_liste_depuis_analyse():
         *vider_photos_analyse(),
         "",
         "",  # zone réponse IA
+        "",  # liste des rapports
     )
 
 
@@ -446,6 +490,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             with gr.Row():
                 bouton_ajouter_photos = gr.Button("Ajouter les photos", variant="primary")
                 bouton_lancer_analyse = gr.Button("Lancer l'analyse", variant="primary")
+                bouton_sauvegarder_rapport = gr.Button("Sauvegarder le rapport")
+                bouton_liste_rapports = gr.Button("Liste des rapports")
                 bouton_retour_analyse = gr.Button("Retour à la liste")
 
             # Zone de réponse de l'IA
@@ -457,6 +503,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     lines=6,
                     placeholder="La réponse de l'IA apparaîtra ici après l'analyse des photos avant/après...",
                 )
+                liste_rapports = gr.Markdown()
 
         # ── Page de liste ────────────────────────────────────────────────────
         with gr.Column(visible=False) as page_liste:
@@ -521,6 +568,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                     analyse_id_materiel, titre_analyse,
                                     *anciennes_images, *nouvelles_images,
                                     statut_photos_analyse, reponse_ia,
+                                    liste_rapports,
                                 ],
                             )
 
@@ -641,7 +689,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             page_liste, page_analyse,
             analyse_id_materiel, titre_analyse,
             *anciennes_images, *nouvelles_images,
-            statut_photos_analyse, reponse_ia,
+            statut_photos_analyse, reponse_ia, liste_rapports,
         ],
     )
 
@@ -655,6 +703,18 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         fn=lancer_analyse,
         inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
         outputs=[reponse_ia],
+    )
+
+    bouton_sauvegarder_rapport.click(
+        fn=sauvegarder_rapport,
+        inputs=[analyse_id_materiel, reponse_ia],
+        outputs=[statut_photos_analyse],
+    )
+
+    bouton_liste_rapports.click(
+        fn=afficher_liste_rapports,
+        inputs=[analyse_id_materiel],
+        outputs=[liste_rapports],
     )
 
     # Liste -> formulaire ajout
