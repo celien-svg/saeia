@@ -2,8 +2,8 @@
 
 import json
 from types import SimpleNamespace
-from unittest import TestCase
-from unittest.mock import Mock
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, Mock
 
 from src.suivi_pret.ollama_client.ia_comparaison import (
     analyser_categorie,
@@ -83,16 +83,18 @@ class ValidationJsonTest(TestCase):
         with self.assertRaises(ValueError):
             valider_reponse_json(json.dumps(reponse))
 
-    def test_analyser_categorie_retourne_une_erreur_controlee(self) -> None:
+
+class AnalyseCategorieTest(IsolatedAsyncioTestCase):
+    async def test_analyser_categorie_retourne_une_erreur_controlee(self) -> None:
         client = Mock()
-        client.compare_images.return_value = SimpleNamespace(response="[]")
+        client.compare_images = AsyncMock(return_value=SimpleNamespace(response="[]"))
         categorie = {
             "zone": "ecran",
             "before": {"image_data": b"avant"},
             "after": {"image_data": b"apres", "id_photo": 1},
         }
 
-        resultat = analyser_categorie(client, categorie, model="test-model")
+        resultat = await analyser_categorie(client, categorie, model="test-model")
 
         self.assertEqual(resultat["zone_analysee"], "ecran")
         self.assertEqual(resultat["zones"], [])

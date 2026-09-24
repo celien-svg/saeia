@@ -1,5 +1,6 @@
 import json
 import argparse
+import asyncio
 import math
 from io import BytesIO
 from pathlib import Path
@@ -142,7 +143,7 @@ def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
         raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
 
 
-def analyser_categorie(
+async def analyser_categorie(
     client: OllamaWrapper,
     categorie: dict[str, Any],
     model: str,
@@ -155,7 +156,7 @@ def analyser_categorie(
     print(f" Analyse de la zone : {zone}...")
 
     try:
-        result = client.compare_images(
+        result = await client.compare_images(
             model=model,
             prompt=PROMPT_TEMPLATE.format(zone=zone),
             image_before=before_photo["image_data"],
@@ -216,25 +217,25 @@ def conversion_texte(categorie: dict) -> str:
     return texte.strip()
 
 
-def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
+async def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
     settings = get_settings()
-    client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
-    if not client.is_server_running():
-        return "Ollama est inaccessible. Vérifiez que le serveur est démarré."
-
     categories = construire_categories(materiel_id, type_photo)
     if not categories:
         return "Aucune photo commune trouvée pour ce matériel."
 
-    rapports = [
-        analyser_categorie(
-            client,
-            categorie,
-            model=settings.OLLAMA_VLM_MODEL,
-        )
-        for categorie in categories
-    ]
+    rapports = []
+    async with OllamaWrapper(
+        base_url=settings.OLLAMA_HOST,
+    ) as client:
+        for categorie in categories:
+            rapports.append(
+                await analyser_categorie(
+                    client,
+                    categorie,
+                    model=settings.OLLAMA_VLM_MODEL,
+                )
+            )
     resultats = [conversion_texte(rapport) for rapport in rapports]
     return "\n\n".join(resultats)
 
@@ -257,7 +258,7 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
     image_annotee.save(image_sortie, format="PNG")
     return image_sortie.getvalue()
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(
         description="Compare les photos d'un matériel avec celles d'une référence en base."
     )
@@ -269,13 +270,6 @@ def main():
     args = parser.parse_args()
 
     settings = get_settings()
-    client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
-
-    print("Serveur dispo :", client.is_server_running())
-    if not client.is_server_running():
-        print("Ollama injoignable, on s'arrête.")
-        return
-
     rapport_global = []
     categories = construire_categories(
         args.materiel_id,
@@ -285,13 +279,16 @@ def main():
         print("Aucune photo commune trouvée pour ces matériels.")
         return
 
-    for categorie in categories:
-        resultat = analyser_categorie(
-            client,
-            categorie,
-            model=settings.OLLAMA_VLM_MODEL,
-        )
-        rapport_global.append(resultat)
+    async with OllamaWrapper(
+        base_url=settings.OLLAMA_HOST,
+    ) as client:
+        for categorie in categories:
+            resultat = await analyser_categorie(
+                client,
+                categorie,
+                model=settings.OLLAMA_VLM_MODEL,
+            )
+            rapport_global.append(resultat)
 
 
 
@@ -303,4 +300,4 @@ def main():
         print(conversion_texte(resultat))
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

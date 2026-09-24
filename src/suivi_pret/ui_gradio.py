@@ -109,13 +109,13 @@ def ajouter_photos_analyse(id_materiel, *photos):
     return " Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
 
 
-def lancer_analyse(id_materiel, *photos):
+async def lancer_analyse(id_materiel, *photos):
     """Compare les photos avant/après et prépare le rapport sans le sauvegarder."""
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
     try:
-        return analyser_materiel(id_materiel)
+        return await analyser_materiel(id_materiel)
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
