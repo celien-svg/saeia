@@ -76,6 +76,60 @@ class PostgresStorage(Storage):
         except psycopg.Error as exc:
             raise StorageError("Impossible de récupérer les photos.") from exc
 
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt, éventuellement annotées par l'IA."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT type_photo, image_data, image_type
+                       FROM photos_materiels
+                       WHERE id_materiel = %s AND est_avant = FALSE""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos d'analyse.") from exc
+
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO rapports_ia (id_materiel, contenu)
+                       VALUES (%s, %s)""",
+                    (materiel_id, contenu),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer le rapport IA.") from exc
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT contenu FROM rapports_ia
+                       WHERE id_materiel = %s
+                       ORDER BY cree_le DESC, id_rapport DESC
+                       LIMIT 1""",
+                    (materiel_id,),
+                )
+                rapport = cur.fetchone()
+                return rapport["contenu"] if rapport else None
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer le rapport IA.") from exc
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id_rapport, contenu, cree_le
+                       FROM rapports_ia
+                       WHERE id_materiel = %s
+                       ORDER BY cree_le DESC, id_rapport DESC""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les rapports IA.") from exc
+
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
