@@ -126,7 +126,7 @@ Photos avant/apres
 Script ou future interface Gradio
 	|
 	v
-OllamaWrapper.compare_images()
+OllamaVLM.compare_images()
 	|
 	v
 Serveur Ollama + modele VLM

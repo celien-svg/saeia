@@ -7,19 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-import httpx
-
-# ------------------------------
-# Exceptions spécifiques
-# ------------------------------
-class OllamaError(RuntimeError):
-    """Erreur générique pour les opérations Ollama."""
-
-class OllamaConnectionError(OllamaError):
-    """Erreur de connexion au serveur Ollama."""
-
-class OllamaResponseError(OllamaError):
-    """Erreur lorsque la réponse HTTP/JSON d'Ollama est invalide ou inattendue."""
+from .base import BaseModelEndpoint, OllamaResponseError
 
 # ------------------------------
 # Dataclasses pour structurer les réponses (lisible + typé)
@@ -40,39 +28,8 @@ class OllamaGenerateResult:
 # Wrapper principal
 # ------------------------------
 
-class OllamaWrapper:
+class OllamaVLM(BaseModelEndpoint):
     """Client HTTP asynchrone pour comparer deux images avec Ollama."""
-    def __init__(
-        self,
-        base_url: str = "http://localhost:11434",
-        timeout_s: float = 60.0,
-        transport: httpx.AsyncBaseTransport | None = None,
-    ) -> None:
-        """Permet de créer un client Ollama.
-
-        Args:
-            base_url (str, optional): URL de l'hôte Ollama. Defaults to "http://localhost:11434".
-            timeout_s (float, optional): Temps de timeout en secondes. Defaults to 60.0.
-            transport (httpx.AsyncBaseTransport | None, optional): Permet de spécifier un transport personnalisé. Defaults to None.
-        """
-        self._base_url: str = base_url.rstrip("/")  # Normalise : pas de "/" final
-        self._async_client = httpx.AsyncClient(
-            base_url=self._base_url,
-            timeout=timeout_s,
-            transport=transport,
-        )
-
-    async def __aenter__(self) -> "OllamaWrapper":
-        """Permet d'utiliser le client avec 'async with'"""
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        """Permet de fermer proprement le client avec 'async with'"""
-        await self.aclose()
-
-    async def aclose(self) -> None:
-        """Ferme les connexions HTTP asynchrones conservées par le client."""
-        await self._async_client.aclose()
 
     async def compare_images(
         self,
@@ -111,27 +68,7 @@ class OllamaWrapper:
         if options is not None:
             body["options"] = dict(options)
 
-        try:
-            response = await self._async_client.post("/api/generate", json=body)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise OllamaResponseError(
-                f"Erreur HTTP {exc.response.status_code} renvoyée par Ollama."
-            ) from exc
-        except httpx.RequestError as exc:
-            raise OllamaConnectionError(
-                f"Impossible de joindre Ollama à {self._base_url}."
-            ) from exc
-
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise OllamaResponseError("Ollama a renvoyé une réponse non JSON.") from exc
-
-        if not isinstance(payload, dict):
-            raise OllamaResponseError(
-                f"JSON inattendu depuis Ollama: {payload!r}"
-            )
+        payload = await self._post("/api/generate", body)
 
         response_text = payload.get("response")
         if not isinstance(response_text, str):

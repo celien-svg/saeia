@@ -10,7 +10,8 @@ import psycopg
 from PIL import Image, ImageDraw
 
 from ..config import get_settings
-from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
+from .base import OllamaConnectionError, OllamaResponseError
+from .vlm import OllamaVLM
 
 PROMPT_TEMPLATE = (Path(__file__).with_name("prompt.md")).read_text(encoding="utf-8")
 
@@ -144,7 +145,7 @@ def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
 
 
 async def analyser_categorie(
-    client: OllamaWrapper,
+    client: OllamaVLM,
     categorie: dict[str, Any],
     model: str,
 ) -> dict:
@@ -225,7 +226,7 @@ async def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> 
         return "Aucune photo commune trouvée pour ce matériel."
 
     rapports = []
-    async with OllamaWrapper(
+    async with OllamaVLM(
         base_url=settings.OLLAMA_HOST,
     ) as client:
         for categorie in categories:
@@ -279,7 +280,7 @@ async def main():
         print("Aucune photo commune trouvée pour ces matériels.")
         return
 
-    async with OllamaWrapper(
+    async with OllamaVLM(
         base_url=settings.OLLAMA_HOST,
     ) as client:
         for categorie in categories:

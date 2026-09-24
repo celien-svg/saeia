@@ -6,13 +6,11 @@ from unittest import IsolatedAsyncioTestCase
 
 import httpx
 
-from src.suivi_pret.ollama_client.vlm import (
-    OllamaResponseError,
-    OllamaWrapper,
-)
+from src.suivi_pret.ollama_client.base import OllamaResponseError
+from src.suivi_pret.ollama_client.vlm import OllamaVLM
 
 
-class OllamaWrapperAsyncTest(IsolatedAsyncioTestCase):
+class OllamaVLMAsyncTest(IsolatedAsyncioTestCase):
     async def test_envoie_les_images_dans_l_ordre_avant_apres(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/api/generate")
@@ -29,7 +27,7 @@ class OllamaWrapperAsyncTest(IsolatedAsyncioTestCase):
             self.assertFalse(payload["stream"])
             return httpx.Response(200, json={"response": '{"zones": []}'})
 
-        async with OllamaWrapper(
+        async with OllamaVLM(
             "http://ollama.test",
             transport=httpx.MockTransport(handler),
         ) as client:
@@ -46,7 +44,7 @@ class OllamaWrapperAsyncTest(IsolatedAsyncioTestCase):
         async def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(500, json={"error": "indisponible"})
 
-        async with OllamaWrapper(
+        async with OllamaVLM(
             "http://ollama.test",
             transport=httpx.MockTransport(handler),
         ) as client:
