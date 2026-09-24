@@ -115,7 +115,7 @@ async def lancer_analyse(id_materiel, *photos):
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
     try:
-        return await analyser_materiel(id_materiel)
+        return await analyser_materiel(id_materiel, storage=service.storage)
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc

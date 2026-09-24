@@ -6,10 +6,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import psycopg
 from PIL import Image, ImageDraw
 
 from ..config import get_settings
+from ..storage.base import Storage
 from .base import OllamaConnectionError, OllamaResponseError
 from .vlm import OllamaVLM
 
@@ -61,55 +61,12 @@ def valider_reponse_json(reponse: str) -> dict[str, Any]:
 
     return donnees
 
-def recuperer_photos(
-    materiel_id: int,
-    type_photo: str | None = None,
-) -> dict[bool, dict[str, dict[str, Any]]]:
-    """Charge les photos d'un matériel, séparées par avant/après."""
-    settings = get_settings()
-    requete = (
-        "SELECT id_photo, type_photo, image_data, image_type, est_avant "
-        "FROM photos_materiels WHERE id_materiel = %s"
-    )
-    parametres: tuple[Any, ...] = (materiel_id,)
-    if type_photo:
-        requete += " AND type_photo = %s"
-        parametres += (type_photo,)
-
-    try:
-        with psycopg.connect(
-            host=settings.POSTGRES_HOST,
-            port=settings.POSTGRES_PORT,
-            user=settings.POSTGRES_USER,
-            password=settings.POSTGRES_PASSWORD,
-            dbname=settings.POSTGRES_DB,
-        ) as connexion, connexion.cursor() as curseur:
-            curseur.execute(requete, parametres)
-            photos: dict[bool, dict[str, dict[str, Any]]] = {
-                False: {},
-                True: {},
-            }
-            for id_photo, type_photo, image_data, image_type, est_avant in curseur.fetchall():
-                photos[est_avant][type_photo] = {
-                    "id_photo": id_photo,
-                    "type_photo": type_photo,
-                    "image_data": image_data,
-                    "image_type": image_type,
-                    "est_avant": est_avant,
-                }
-            return photos
-    except psycopg.Error as exc:
-        raise RuntimeError("Impossible de récupérer les photos en base.") from exc
-
-
 def construire_categories(
-    materiel_id: int,
-    type_photo: str | None = None,
+    photos: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Construit les comparaisons à partir des photos présentes en base."""
-    photos = recuperer_photos(materiel_id, type_photo)
-    photos_avant = photos[True]
-    photos_apres = photos[False]
+    """Associe les photos avant/après par zone, sans accès au stockage."""
+    photos_avant = {p["type_photo"]: p for p in photos if p["est_avant"]}
+    photos_apres = {p["type_photo"]: p for p in photos if not p["est_avant"]}
 
     categories = []
     for zone in sorted(photos_avant.keys() & photos_apres.keys()):
@@ -123,31 +80,12 @@ def construire_categories(
     return categories
 
 
-def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
-    """Remplace en base l'image de restitution par sa version annotée."""
-    settings = get_settings()
-    try:
-        with psycopg.connect(
-            host=settings.POSTGRES_HOST,
-            port=settings.POSTGRES_PORT,
-            user=settings.POSTGRES_USER,
-            password=settings.POSTGRES_PASSWORD,
-            dbname=settings.POSTGRES_DB,
-        ) as connexion, connexion.cursor() as curseur:
-            curseur.execute(
-                """UPDATE photos_materiels
-                SET image_data = %s, image_type = 'image/png'
-                WHERE id_photo = %s""",
-                (image_data, id_photo),
-            )
-    except psycopg.Error as exc:
-        raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
-
-
 async def analyser_categorie(
     client: OllamaVLM,
     categorie: dict[str, Any],
     model: str,
+    *,
+    storage: Storage,
 ) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
     zone = categorie["zone"]
@@ -184,7 +122,7 @@ async def analyser_categorie(
             after_photo["image_data"],
             parsed["zones"],
         )
-        enregistrer_image_annotee(
+        storage.enregistrer_image_annotee(
             after_photo["id_photo"],
             image_annotee,
         )
@@ -218,10 +156,16 @@ def conversion_texte(categorie: dict) -> str:
     return texte.strip()
 
 
-async def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> str:
+async def analyser_materiel(
+    materiel_id: int,
+    type_photo: str | None = None,
+    *,
+    storage: Storage,
+) -> str:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
     settings = get_settings()
-    categories = construire_categories(materiel_id, type_photo)
+    photos = storage.recuperer_photos_comparaison(materiel_id, type_photo)
+    categories = construire_categories(photos)
     if not categories:
         return "Aucune photo commune trouvée pour ce matériel."
 
@@ -235,6 +179,7 @@ async def analyser_materiel(materiel_id: int, type_photo: str | None = None) -> 
                     client,
                     categorie,
                     model=settings.OLLAMA_VLM_MODEL,
+                    storage=storage,
                 )
             )
     resultats = [conversion_texte(rapport) for rapport in rapports]
@@ -260,6 +205,8 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
     return image_sortie.getvalue()
 
 async def main():
+    from ..storage.postgres import PostgresStorage
+
     parser = argparse.ArgumentParser(
         description="Compare les photos d'un matériel avec celles d'une référence en base."
     )
@@ -271,10 +218,10 @@ async def main():
     args = parser.parse_args()
 
     settings = get_settings()
+    storage = PostgresStorage(settings)
     rapport_global = []
     categories = construire_categories(
-        args.materiel_id,
-        args.type_photo,
+        storage.recuperer_photos_comparaison(args.materiel_id, args.type_photo),
     )
     if not categories:
         print("Aucune photo commune trouvée pour ces matériels.")
@@ -288,6 +235,7 @@ async def main():
                 client,
                 categorie,
                 model=settings.OLLAMA_VLM_MODEL,
+                storage=storage,
             )
             rapport_global.append(resultat)
 

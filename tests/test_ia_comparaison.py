@@ -94,7 +94,9 @@ class AnalyseCategorieTest(IsolatedAsyncioTestCase):
             "after": {"image_data": b"apres", "id_photo": 1},
         }
 
-        resultat = await analyser_categorie(client, categorie, model="test-model")
+        resultat = await analyser_categorie(
+            client, categorie, model="test-model", storage=Mock(),
+        )
 
         self.assertEqual(resultat["zone_analysee"], "ecran")
         self.assertEqual(resultat["zones"], [])

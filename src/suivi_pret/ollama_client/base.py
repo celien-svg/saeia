@@ -34,7 +34,7 @@ class BaseModelEndpoint:
             transport=transport,
         )
 
-    async def __aenter__(self) -> "BaseModelEndpoint":
+    async def __aenter__(self):
         """Permet d'utiliser le client avec 'async with'"""
         return self
 

@@ -46,6 +46,16 @@ class Storage(ABC):
         """Enregistre le dernier rapport IA d'un matériel."""
         raise NotImplementedError
 
+    def recuperer_photos_comparaison(
+        self, materiel_id: int, type_photo: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après, avec leur id_photo et est_avant."""
+        raise NotImplementedError
+
+    def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
+        """Remplace la photo indiquée par son annotation au format PNG."""
+        raise NotImplementedError
+
     def recuperer_rapport(self, materiel_id: int) -> str | None:
         """Retourne le dernier rapport IA d'un matériel, s'il existe."""
         raise NotImplementedError
