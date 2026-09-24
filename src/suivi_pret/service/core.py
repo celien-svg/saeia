@@ -47,6 +47,22 @@ class SuiviPretService:
         """Retourne les photos de référence (avant prêt) d'un matériel."""
         return self.storage.recuperer_photos(int(materiel_id))
 
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt, avec leurs annotations éventuelles."""
+        return self.storage.recuperer_photos_analyse(int(materiel_id))
+
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+        """Enregistre le rapport IA associé au matériel."""
+        self.storage.enregistrer_rapport(int(materiel_id), contenu)
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        """Retourne le rapport IA déjà enregistré pour le matériel."""
+        return self.storage.recuperer_rapport(int(materiel_id))
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne tous les rapports IA du matériel, du plus récent au plus ancien."""
+        return self.storage.lister_rapports(int(materiel_id))
+
     def supprimer_materiel(self, materiel_id: int) -> None:
         """Supprime un matériel après normalisation de son identifiant."""
         self.storage.supprimer_materiel(int(materiel_id))

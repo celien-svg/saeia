@@ -51,3 +51,14 @@ CREATE TABLE IF NOT EXISTS photos_materiels (
     image_type VARCHAR(50) NOT NULL,
     UNIQUE (id_materiel, type_photo, est_avant)
 );
+
+-- 5. Conserver l'historique des rapports produits par l'IA
+CREATE TABLE IF NOT EXISTS rapports_ia (
+    id_rapport SERIAL PRIMARY KEY,
+    id_materiel INT NOT NULL REFERENCES materiels(id_materiel) ON DELETE CASCADE,
+    contenu TEXT NOT NULL,
+    cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Migration des bases créées avec l'ancienne contrainte (un seul rapport)
+ALTER TABLE rapports_ia DROP CONSTRAINT IF EXISTS rapports_ia_id_materiel_key;

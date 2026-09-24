@@ -38,6 +38,22 @@ class Storage(ABC):
         """Retourne les photos de référence (est_avant=TRUE) d'un matériel."""
         raise NotImplementedError
 
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt (est_avant=FALSE) d'un matériel."""
+        raise NotImplementedError
+
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+        """Enregistre le dernier rapport IA d'un matériel."""
+        raise NotImplementedError
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        """Retourne le dernier rapport IA d'un matériel, s'il existe."""
+        raise NotImplementedError
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne l'historique des rapports IA d'un matériel."""
+        raise NotImplementedError
+
     @abstractmethod
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         """Persiste un nouveau matériel."""
