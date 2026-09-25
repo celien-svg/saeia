@@ -1,5 +1,4 @@
 import json
-import argparse
 import asyncio
 import math
 from io import BytesIO
@@ -207,51 +206,3 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
     image_sortie = BytesIO()
     image_annotee.save(image_sortie, format="PNG")
     return image_sortie.getvalue()
-
-async def main():
-    from ..storage.postgres import PostgresStorage
-
-    parser = argparse.ArgumentParser(
-        description="Compare les photos d'un matériel avec celles d'une référence en base."
-    )
-    parser.add_argument("--materiel-id", type=int, required=True)
-    parser.add_argument(
-        "--type-photo",
-        help="Ne comparer qu'une zone, par exemple 'ecran' ou 'clavier'.",
-    )
-    args = parser.parse_args()
-
-    settings = get_settings()
-    storage = PostgresStorage(settings)
-    rapport_global = []
-    photos = await asyncio.to_thread(
-        storage.recuperer_photos_comparaison, args.materiel_id, args.type_photo,
-    )
-    categories = construire_categories(photos)
-    if not categories:
-        print("Aucune photo commune trouvée pour ces matériels.")
-        return
-
-    async with OllamaVLM(
-        base_url=settings.OLLAMA_HOST,
-    ) as client:
-        for categorie in categories:
-            resultat = await analyser_categorie(
-                client,
-                categorie,
-                model=settings.OLLAMA_VLM_MODEL,
-                storage=storage,
-            )
-            rapport_global.append(resultat)
-
-
-
-    # print("\n Rapport global :")
-    # print(json.dumps(rapport_global, ensure_ascii=False, indent=2))
-
-    print("\n Rapport texte :")
-    for resultat in rapport_global:
-        print(conversion_texte(resultat))
-
-if __name__ == "__main__":
-    asyncio.run(main())

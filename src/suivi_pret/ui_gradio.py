@@ -753,12 +753,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     )
 
 
-demo.launch(
-    # Dans Docker, l'application doit écouter sur toutes les interfaces pour
-    # que le port publié par Compose soit accessible depuis la machine hôte.
-    server_name="0.0.0.0",
-    server_port=7860,
-    theme=gr.Theme.from_hub("harsh8001/skymist"),
-    css=CSS,
-    show_error=False,
-)
+def lancer_application():
+    """Point d'entrée appelé par le conteneur Docker."""
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=gr.Theme.from_hub("harsh8001/skymist"),
+        css=CSS,
+        show_error=False,
+    )

@@ -15,7 +15,6 @@ from src.suivi_pret.ollama_client.ia_comparaison import (
     analyser_categorie,
     analyser_materiel,
     construire_categories,
-    main,
 )
 from src.suivi_pret.storage.base import Storage, StorageError
 from src.suivi_pret.storage.postgres import PostgresStorage
@@ -138,20 +137,3 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
             with self.assertRaises(StorageError) as resultat:
                 await analyser_materiel(12, storage=storage)
         self.assertIs(resultat.exception, erreur)
-
-    async def test_commande_cli_lit_hors_de_la_boucle(self):
-        storage = Mock(spec=Storage)
-        verifier = self.verifier_boucle_disponible()
-
-        def lire(*args):
-            verifier(*args)
-            return []
-
-        storage.recuperer_photos_comparaison.side_effect = lire
-        with (
-            patch("sys.argv", ["analyse", "--materiel-id", "12", "--type-photo", "ecran"]),
-            patch("src.suivi_pret.ollama_client.ia_comparaison.get_settings"),
-            patch("src.suivi_pret.storage.postgres.PostgresStorage", return_value=storage),
-        ):
-            await main()
-        storage.recuperer_photos_comparaison.assert_called_once_with(12, "ecran")
