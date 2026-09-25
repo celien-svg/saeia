@@ -3,7 +3,7 @@ import argparse
 import math
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import psycopg
 from PIL import Image, ImageDraw
@@ -15,13 +15,25 @@ PROMPT_TEMPLATE = (Path(__file__).with_name("prompt.md")).read_text(encoding="ut
 
 GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
 CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
+TAILLE_IMAGE_VLM = 1024
+
+
+class ZoneDetection(TypedDict):
+    element: str
+    anomalie: str
+    gravite: str
+    bbox: list[int | float]
+
+
+class ReponseVLM(TypedDict):
+    zones: list[ZoneDetection]
 
 
 def _refuser_constante_json(valeur: str) -> None:
     raise ValueError(f"constante JSON non standard : {valeur}")
 
 
-def valider_reponse_json(reponse: str) -> dict[str, Any]:
+def valider_reponse_json(reponse: str) -> ReponseVLM:
     """Parse et valide strictement la réponse JSON produite par le VLM."""
     try:
         donnees = json.loads(reponse, parse_constant=_refuser_constante_json)
@@ -49,7 +61,10 @@ def valider_reponse_json(reponse: str) -> dict[str, Any]:
             not isinstance(bbox, list)
             or len(bbox) != 4
             or any(isinstance(coord, bool) or not isinstance(coord, (int, float)) for coord in bbox)
-            or any(not math.isfinite(coord) or coord < 0 for coord in bbox)
+            or any(
+                not math.isfinite(coord) or not 0 <= coord <= TAILLE_IMAGE_VLM
+                for coord in bbox
+            )
             or bbox[0] > bbox[2]
             or bbox[1] > bbox[3]
         ):
@@ -57,7 +72,7 @@ def valider_reponse_json(reponse: str) -> dict[str, Any]:
                 f"la bbox de la zone {index} doit contenir quatre coordonnées valides"
             )
 
-    return donnees
+    return cast(ReponseVLM, donnees)
 
 def recuperer_photos(
     materiel_id: int,
@@ -244,14 +259,26 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
         image_annotee = image.convert("RGB")
 
     dessin = ImageDraw.Draw(image_annotee)
+    largeur, hauteur = image_annotee.size
     for zone in zones:
         bbox = zone.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
-        if not all(isinstance(coord, (int, float)) for coord in bbox):
+        if any(
+            isinstance(coord, bool)
+            or not isinstance(coord, (int, float))
+            or not math.isfinite(coord)
+            for coord in bbox
+        ):
             continue
 
-        dessin.rectangle(tuple(bbox), outline="red", width=4)
+        x_min, y_min, x_max, y_max = bbox
+        x_min = max(0, min(x_min, largeur))
+        y_min = max(0, min(y_min, hauteur))
+        x_max = max(0, min(x_max, largeur))
+        y_max = max(0, min(y_max, hauteur))
+        if x_min <= x_max and y_min <= y_max:
+            dessin.rectangle((x_min, y_min, x_max, y_max), outline="red", width=4)
 
     image_sortie = BytesIO()
     image_annotee.save(image_sortie, format="PNG")
