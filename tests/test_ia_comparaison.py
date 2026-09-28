@@ -24,6 +24,11 @@ class ValidationJsonTest(TestCase):
 
         resultat = valider_reponse_json(reponse)
 
+        self.assertIsInstance(resultat, dict)
+        self.assertIsInstance(resultat["zones"], list)
+        self.assertIsInstance(resultat["zones"][0], dict)
+        self.assertIsInstance(resultat["zones"][0]["bbox"], list)
+        self.assertTrue(all(isinstance(coord, (int, float)) for coord in resultat["zones"][0]["bbox"]))
         self.assertEqual(resultat["zones"][0]["gravite"], "legere")
 
     def test_refuse_un_json_syntaxiquement_invalide(self) -> None:
@@ -77,6 +82,19 @@ class ValidationJsonTest(TestCase):
                 "anomalie": "tache",
                 "gravite": "marquee",
                 "bbox": [10, 0, 1, 10],
+            }],
+        }
+
+        with self.assertRaises(ValueError):
+            valider_reponse_json(json.dumps(reponse))
+
+    def test_refuse_une_bbox_en_dehors_de_l_image(self) -> None:
+        reponse = {
+            "zones": [{
+                "element": "ecran",
+                "anomalie": "tache",
+                "gravite": "marquee",
+                "bbox": [0, 0, 1024, 1025],
             }],
         }
 
