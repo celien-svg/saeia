@@ -90,6 +90,39 @@ class PostgresStorage(Storage):
         except psycopg.Error as exc:
             raise StorageError("Impossible de récupérer les photos d'analyse.") from exc
 
+    def recuperer_photos_comparaison(
+        self, materiel_id: int, type_photo: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Charge les photos avant/après, éventuellement pour une seule zone."""
+        requete = (
+            "SELECT id_photo, type_photo, image_data, image_type, est_avant "
+            "FROM photos_materiels WHERE id_materiel = %s"
+        )
+        parametres: tuple[Any, ...] = (materiel_id,)
+        if type_photo:
+            requete += " AND type_photo = %s"
+            parametres += (type_photo,)
+
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(requete, parametres)
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos en base.") from exc
+
+    def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
+        """Remplace la photo indiquée par son annotation au format PNG."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE photos_materiels
+                       SET image_data = %s, image_type = 'image/png'
+                       WHERE id_photo = %s""",
+                    (image_data, id_photo),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer l'image annotée en base.") from exc
+
     def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
         try:
             with self._connexion() as conn, conn.cursor() as cur:

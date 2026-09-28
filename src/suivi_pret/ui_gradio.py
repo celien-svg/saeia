@@ -109,13 +109,13 @@ def ajouter_photos_analyse(id_materiel, *photos):
     return " Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
 
 
-def lancer_analyse(id_materiel, *photos):
+async def lancer_analyse(id_materiel, *photos):
     """Compare les photos avant/après et prépare le rapport sans le sauvegarder."""
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
     try:
-        return analyser_materiel(id_materiel)
+        return await analyser_materiel(id_materiel, storage=service.storage)
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -753,12 +753,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     )
 
 
-demo.launch(
-    # Dans Docker, l'application doit écouter sur toutes les interfaces pour
-    # que le port publié par Compose soit accessible depuis la machine hôte.
-    server_name="0.0.0.0",
-    server_port=7860,
-    theme=gr.Theme.from_hub("harsh8001/skymist"),
-    css=CSS,
-    show_error=False,
-)
+def lancer_application():
+    """Point d'entrée appelé par le conteneur Docker."""
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=gr.Theme.from_hub("harsh8001/skymist"),
+        css=CSS,
+        show_error=False,
+    )
