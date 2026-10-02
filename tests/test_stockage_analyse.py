@@ -56,10 +56,17 @@ class PostgresAnalyseTest(TestCase):
                 self.assertEqual(params, (12,) if filtre is None else (12, filtre))
                 self.assertEqual("AND type_photo = %s" in requete, filtre is not None)
 
+    def test_lecture_des_photos_analyse_prefere_la_copie_annotee(self):
+        self.storage.recuperer_photos_analyse(12)
+        requete = self.curseur.execute.call_args.args[0]
+        self.assertIn("COALESCE(image_annotee, image_data)", requete)
+        self.assertIn("WHERE id_materiel = %s AND est_avant = FALSE", requete)
+
     def test_enregistrement_png_sur_la_photo_indiquee(self):
         self.storage.enregistrer_image_annotee(42, b"image annotee")
         requete, params = self.curseur.execute.call_args.args
-        self.assertIn("image_type = 'image/png'", requete)
+        self.assertIn("SET image_annotee = %s", requete)
+        self.assertNotIn("SET image_data", requete)
         self.assertIn("WHERE id_photo = %s", requete)
         self.assertEqual(params, (b"image annotee", 42))
 
@@ -97,10 +104,16 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
         storage.enregistrer_image_annotee.side_effect = self.verifier_boucle_disponible()
         client = Mock()
         client.compare_images = AsyncMock(return_value=SimpleNamespace(
-            response=json.dumps({"zones": [{
-                "element": "ecran", "anomalie": "rayure",
-                "gravite": "legere", "bbox": [1, 1, 5, 5],
-            }]}),
+            response=json.dumps({"zones": [
+                {
+                    "element": "ecran", "anomalie": "rayure",
+                    "gravite": "legere", "bbox": [1, 1, 5, 5],
+                },
+                {
+                    "element": "coque", "anomalie": "choc",
+                    "gravite": "marquee", "bbox": [6, 6, 9, 9],
+                },
+            ]}),
         ))
         resultat = await analyser_categorie(
             client, categorie, "modele-test", storage=storage,
@@ -111,6 +124,7 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
         with Image.open(BytesIO(contenu)) as annotee:
             self.assertEqual(annotee.format, "PNG")
             self.assertEqual(annotee.getpixel((1, 1)), (255, 0, 0))
+            self.assertNotEqual(annotee.getpixel((1, 1)), annotee.getpixel((6, 6)))
         self.assertEqual(resultat["image_annotee"], "enregistrée en base")
 
     async def test_aucune_paire_ne_declenche_pas_ollama(self):
