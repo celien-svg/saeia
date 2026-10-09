@@ -63,6 +63,24 @@ class PostgresAnalyseTest(TestCase):
         self.assertIn("WHERE id_photo = %s", requete)
         self.assertEqual(params, (b"image annotee", 42))
 
+    def test_enregistre_une_validation_humaine(self):
+        self.storage.enregistrer_validation_humaine(
+            7, "modifier_type_gravite", "rayure", "marquee", "Confirmée.",
+        )
+        requete, params = self.curseur.execute.call_args.args
+        self.assertIn("validations_humaines", requete)
+        self.assertEqual(
+            params, (7, "modifier_type_gravite", "rayure", "marquee", "Confirmée."),
+        )
+
+    def test_retourne_l_identifiant_du_rapport(self):
+        self.curseur.fetchone.return_value = {"id_rapport": 23}
+        rapport_id = self.storage.enregistrer_rapport(12, "rapport")
+        self.assertEqual(rapport_id, 23)
+        requete, params = self.curseur.execute.call_args.args
+        self.assertIn("RETURNING id_rapport", requete)
+        self.assertEqual(params, (12, "rapport"))
+
     def test_convertit_les_erreurs_postgres(self):
         self.storage._connexion.side_effect = psycopg.OperationalError("indisponible")
         with self.assertRaises(StorageError):

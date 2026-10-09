@@ -1,6 +1,7 @@
 """Interface Gradio de gestion des matériels."""
 
 import html
+import asyncio
 import logging
 from io import BytesIO
 
@@ -110,12 +111,16 @@ def ajouter_photos_analyse(id_materiel, *photos):
 
 
 async def lancer_analyse(id_materiel, *photos):
-    """Compare les photos avant/après et prépare le rapport sans le sauvegarder."""
+    """Compare les photos puis recharge immédiatement les images annotées."""
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
     try:
-        return await analyser_materiel(id_materiel, storage=service.storage)
+        rapport = await analyser_materiel(id_materiel, storage=service.storage)
+        photos_analyse = await asyncio.to_thread(
+            service.recuperer_photos_analyse, id_materiel,
+        )
+        return rapport, *photos_en_data_uri(photos_analyse)
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -127,16 +132,82 @@ def sauvegarder_rapport(id_materiel, rapport):
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
     if not rapport or rapport.startswith("Aucun rapport enregistré"):
         gr.Warning("Lancez une analyse avant de sauvegarder un rapport.")
-        return "Aucun rapport à sauvegarder."
+        return "Aucun rapport à sauvegarder.", gr.update()
 
     try:
-        service.enregistrer_rapport(id_materiel, rapport)
+        rapport_id = service.enregistrer_rapport(id_materiel, rapport)
+        choix_rapports = construire_choix_rapports(id_materiel)
     except StorageError as exc:
         logger.exception("Erreur lors de l'enregistrement du rapport %s", id_materiel)
         raise gr.Error(str(exc)) from exc
 
     gr.Info("Rapport sauvegardé.")
-    return "Rapport sauvegardé dans l'historique."
+    return (
+        "Rapport sauvegardé dans l'historique.",
+        gr.update(
+            choices=choix_rapports,
+            value=rapport_id,
+        ),
+    )
+
+
+DECISIONS_HUMAINES = {
+    "accepter_degradation": "accepter_degradation",
+    "modifier_type_gravite": "modifier_type_gravite",
+    "ignorer_faux_positif": "ignorer_faux_positif",
+}
+GRAVITES = ["aucune", "legere", "marquee", "importante"]
+
+
+def valider_decision_humaine(
+    rapport_id,
+    actions,
+    type_anomalie,
+    gravite,
+    ajouter_remarque,
+    remarque,
+):
+    """Valide les champs du gestionnaire puis enregistre sa décision."""
+    if rapport_id is None:
+        raise gr.Error("Sauvegardez d'abord le rapport IA.")
+
+    actions = actions or []
+    if len(actions) != 1:
+        gr.Warning("Sélectionnez une seule décision pour le rapport.")
+        return "Validation non enregistrée."
+
+    decision = DECISIONS_HUMAINES.get(actions[0])
+    if decision is None:
+        gr.Warning("La décision sélectionnée est invalide.")
+        return "Validation non enregistrée."
+    if decision == "modifier_type_gravite" and not (type_anomalie or "").strip():
+        gr.Warning("Indiquez le nouveau type d'anomalie.")
+        return "Validation non enregistrée."
+    if decision == "modifier_type_gravite" and not gravite:
+        gr.Warning("Indiquez la nouvelle gravité.")
+        return "Validation non enregistrée."
+    if ajouter_remarque and not (remarque or "").strip():
+        gr.Warning("Saisissez une remarque ou désactivez l'option.")
+        return "Validation non enregistrée."
+
+    type_corrige = (type_anomalie or "").strip() or None
+    gravite_corrigee = gravite if decision == "modifier_type_gravite" else None
+    remarque_enregistree = (remarque or "").strip() or None if ajouter_remarque else None
+
+    try:
+        service.enregistrer_validation_humaine(
+            rapport_id,
+            decision,
+            type_corrige if decision == "modifier_type_gravite" else None,
+            gravite_corrigee,
+            remarque_enregistree,
+        )
+    except StorageError as exc:
+        logger.exception("Erreur lors de l'enregistrement de la validation humaine")
+        raise gr.Error(str(exc)) from exc
+
+    gr.Info("Décision du gestionnaire enregistrée.")
+    return "Validation humaine enregistrée."
 
 
 def afficher_liste_rapports(id_materiel):
@@ -153,11 +224,79 @@ def afficher_liste_rapports(id_materiel):
     if not rapports:
         return "Aucun rapport sauvegardé pour cet ordinateur."
 
-    lignes = ["### Rapports sauvegardés"]
+    try:
+        validations = service.lister_validations_humaines(id_materiel)
+    except StorageError:
+        logger.exception(
+            "Erreur lors du chargement des validations %s", id_materiel,
+        )
+        validations = []
+        erreur_validations = (
+            "> Les validations humaines ne sont pas disponibles pour le moment."
+        )
+    else:
+        erreur_validations = None
+
+    validations_par_rapport = {}
+    for validation in validations:
+        validations_par_rapport.setdefault(validation["id_rapport"], []).append(validation)
+
+    blocs_rapports = []
     for rapport in rapports:
+        rapport_id = rapport["id_rapport"]
         date = rapport["cree_le"].strftime("%d/%m/%Y %H:%M")
-        lignes.append(f"#### Rapport du {date}\n\n{rapport['contenu']}")
-    return "\n\n---\n\n".join(lignes)
+        validations_rapport = validations_par_rapport.get(rapport_id, [])
+        contenu_rapport = (
+            f"#### Rapport du {date} (identifiant : {rapport_id})\n\n"
+            f"{rapport['contenu']}"
+        )
+        if validations_rapport:
+            contenu_rapport += (
+                "\n**Décision(s) du gestionnaire pour ce rapport :**"
+            )
+        bloc = [contenu_rapport]
+
+        if validations_rapport:
+            for validation in validations_rapport:
+                date_validation = validation["cree_le"].strftime("%d/%m/%Y %H:%M")
+                remarque = validation["remarque"] or "Aucune remarque"
+                bloc.append(
+                    f"- **{date_validation}** — {validation['decision']} "
+                    f"(type : {validation['type_anomalie'] or 'inchangé'}, "
+                    f"gravité : {validation['gravite'] or 'inchangée'}) — {remarque}"
+                )
+        elif erreur_validations:
+            bloc.append(erreur_validations)
+        else:
+            bloc.append("_Aucune décision humaine enregistrée pour ce rapport._")
+
+        blocs_rapports.append("\n".join(bloc))
+
+    return "\n\n---\n\n".join(blocs_rapports)
+
+
+def construire_choix_rapports(id_materiel):
+    """Construit les choix de rapports utilisables pour une validation."""
+    rapports = service.lister_rapports(id_materiel)
+    return [
+        (
+            f"Rapport du {rapport['cree_le'].strftime('%d/%m/%Y %H:%M')} "
+            f"(#{rapport['id_rapport']})",
+            rapport["id_rapport"],
+        )
+        for rapport in rapports
+    ]
+
+
+def charger_rapport_selectionne(rapport_id, id_materiel):
+    """Affiche le contenu du rapport choisi pour la validation humaine."""
+    if rapport_id is None or id_materiel is None:
+        return ""
+    rapports = service.lister_rapports(id_materiel)
+    for rapport in rapports:
+        if rapport["id_rapport"] == int(rapport_id):
+            return rapport["contenu"]
+    raise gr.Error("Le rapport sélectionné n'existe plus.")
 
 
 def photos_en_data_uri(photos):
@@ -187,6 +326,7 @@ def ouvrir_analyse(id_materiel, nom):
         photos_analyse = photos_en_data_uri(
             service.recuperer_photos_analyse(id_materiel)
         )
+        rapports = service.lister_rapports(id_materiel)
     except StorageError as exc:
         logger.exception("Erreur lors du chargement des photos du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -199,6 +339,23 @@ def ouvrir_analyse(id_materiel, nom):
         *anciennes_photos,
         *photos_analyse,
         "",
+        rapports[0]["contenu"] if rapports else "",
+        "",
+        gr.update(
+            choices=[
+                (
+                    f"Rapport du {rapport['cree_le'].strftime('%d/%m/%Y %H:%M')} "
+                    f"(#{rapport['id_rapport']})",
+                    rapport["id_rapport"],
+                )
+                for rapport in rapports
+            ],
+            value=rapports[0]["id_rapport"] if rapports else None,
+        ),
+        [],
+        "",
+        "legere",
+        False,
         "",
         "",
     )
@@ -216,6 +373,13 @@ def retour_liste_depuis_analyse():
         "",
         "",  # zone réponse IA
         "",  # liste des rapports
+        gr.update(choices=[], value=None),  # rapport sélectionné pour validation
+        [],  # décision
+        "",  # type corrigé
+        "legere",  # gravité corrigée
+        False,  # remarque activée
+        "",  # remarque
+        "",  # statut validation
     )
 
 
@@ -505,6 +669,46 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 )
                 liste_rapports = gr.Markdown()
 
+                gr.Markdown("### Validation humaine")
+                rapport_id_validation = gr.Dropdown(
+                    choices=[],
+                    label="Rapport à valider",
+                    info="Sélectionnez le rapport IA auquel cette décision doit être liée.",
+                    interactive=True,
+                )
+                decision_humaine = gr.CheckboxGroup(
+                    choices=[
+                        ("Accepter une dégradation", "accepter_degradation"),
+                        ("Modifier son type ou sa gravité", "modifier_type_gravite"),
+                        ("Ignorer un faux positif", "ignorer_faux_positif"),
+                    ],
+                    label="Décision du gestionnaire",
+                )
+                with gr.Row():
+                    type_anomalie = gr.Textbox(
+                        label="Nouveau type d'anomalie",
+                        placeholder="Ex. rayure, casse...",
+                    )
+                    gravite = gr.Dropdown(
+                        GRAVITES,
+                        value="legere",
+                        label="Nouvelle gravité",
+                    )
+                ajouter_remarque = gr.Checkbox(
+                    label="Ajouter une remarque",
+                    value=False,
+                )
+                remarque_validation = gr.Textbox(
+                    label="Remarque",
+                    lines=3,
+                    placeholder="Expliquez la décision du gestionnaire...",
+                )
+                bouton_enregistrer_validation = gr.Button(
+                    "Enregistrer la décision du gestionnaire",
+                    variant="primary",
+                )
+                statut_validation = gr.Markdown()
+
         # ── Page de liste ────────────────────────────────────────────────────
         with gr.Column(visible=False) as page_liste:
             gr.Markdown("## Liste des ordinateurs", elem_id="titre")
@@ -569,6 +773,9 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                     *anciennes_images, *nouvelles_images,
                                     statut_photos_analyse, reponse_ia,
                                     liste_rapports,
+                                    rapport_id_validation, decision_humaine,
+                                    type_anomalie, gravite, ajouter_remarque,
+                                    remarque_validation, statut_validation,
                                 ],
                             )
 
@@ -690,6 +897,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             analyse_id_materiel, titre_analyse,
             *anciennes_images, *nouvelles_images,
             statut_photos_analyse, reponse_ia, liste_rapports,
+            rapport_id_validation, decision_humaine, type_anomalie, gravite,
+            ajouter_remarque, remarque_validation, statut_validation,
         ],
     )
 
@@ -702,13 +911,28 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     bouton_lancer_analyse.click(
         fn=lancer_analyse,
         inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
-        outputs=[reponse_ia],
+        outputs=[reponse_ia, *nouvelles_images],
     )
 
     bouton_sauvegarder_rapport.click(
         fn=sauvegarder_rapport,
         inputs=[analyse_id_materiel, reponse_ia],
-        outputs=[statut_photos_analyse],
+        outputs=[statut_photos_analyse, rapport_id_validation],
+    )
+
+    rapport_id_validation.change(
+        fn=charger_rapport_selectionne,
+        inputs=[rapport_id_validation, analyse_id_materiel],
+        outputs=[reponse_ia],
+    )
+
+    bouton_enregistrer_validation.click(
+        fn=valider_decision_humaine,
+        inputs=[
+            rapport_id_validation, decision_humaine, type_anomalie, gravite,
+            ajouter_remarque, remarque_validation,
+        ],
+        outputs=[statut_validation],
     )
 
     bouton_liste_rapports.click(
