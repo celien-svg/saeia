@@ -51,9 +51,26 @@ class SuiviPretService:
         """Retourne les photos après prêt, avec leurs annotations éventuelles."""
         return self.storage.recuperer_photos_analyse(int(materiel_id))
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
         """Enregistre le rapport IA associé au matériel."""
-        self.storage.enregistrer_rapport(int(materiel_id), contenu)
+        return self.storage.enregistrer_rapport(int(materiel_id), contenu)
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        """Enregistre la décision humaine associée à un rapport."""
+        self.storage.enregistrer_validation_humaine(
+            int(rapport_id), decision, type_anomalie, gravite, remarque,
+        )
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne l'historique des décisions humaines d'un matériel."""
+        return self.storage.lister_validations_humaines(int(materiel_id))
 
     def recuperer_rapport(self, materiel_id: int) -> str | None:
         """Retourne le rapport IA déjà enregistré pour le matériel."""

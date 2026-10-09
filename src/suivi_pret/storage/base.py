@@ -42,8 +42,23 @@ class Storage(ABC):
         """Retourne les photos après prêt (est_avant=FALSE) d'un matériel."""
         raise NotImplementedError
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
         """Enregistre le dernier rapport IA d'un matériel."""
+        raise NotImplementedError
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        """Enregistre la décision du gestionnaire pour un rapport IA."""
+        raise NotImplementedError
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les validations humaines liées aux rapports d'un matériel."""
         raise NotImplementedError
 
     def recuperer_photos_comparaison(
@@ -53,7 +68,7 @@ class Storage(ABC):
         raise NotImplementedError
 
     def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
-        """Remplace la photo indiquée par son annotation au format PNG."""
+        """Enregistre une copie annotée sans modifier la photo originale."""
         raise NotImplementedError
 
     def recuperer_rapport(self, materiel_id: int) -> str | None:

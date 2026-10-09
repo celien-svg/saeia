@@ -81,7 +81,9 @@ class PostgresStorage(Storage):
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """SELECT type_photo, image_data, image_type
+                          """SELECT type_photo, COALESCE(image_annotee, image_data) AS image_data,
+                                        CASE WHEN image_annotee IS NOT NULL THEN 'image/png'
+                                              ELSE image_type END AS image_type
                        FROM photos_materiels
                        WHERE id_materiel = %s AND est_avant = FALSE""",
                     (materiel_id,),
@@ -111,28 +113,66 @@ class PostgresStorage(Storage):
             raise StorageError("Impossible de récupérer les photos en base.") from exc
 
     def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
-        """Remplace la photo indiquée par son annotation au format PNG."""
+        """Enregistre une copie annotée sans modifier la photo originale."""
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
                     """UPDATE photos_materiels
-                       SET image_data = %s, image_type = 'image/png'
+                       SET image_annotee = %s
                        WHERE id_photo = %s""",
                     (image_data, id_photo),
                 )
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer l'image annotée en base.") from exc
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> None:
+    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO rapports_ia (id_materiel, contenu)
-                       VALUES (%s, %s)""",
+                       VALUES (%s, %s)
+                       RETURNING id_rapport""",
                     (materiel_id, contenu),
                 )
+                return cur.fetchone()["id_rapport"]
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer le rapport IA.") from exc
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO validations_humaines (
+                           id_rapport, decision, type_anomalie, gravite, remarque
+                       )
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (rapport_id, decision, type_anomalie, gravite, remarque),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer la validation humaine.") from exc
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT v.id_validation, v.id_rapport, v.decision,
+                              v.type_anomalie, v.gravite, v.remarque, v.cree_le
+                       FROM validations_humaines v
+                       JOIN rapports_ia r ON r.id_rapport = v.id_rapport
+                       WHERE r.id_materiel = %s
+                       ORDER BY v.cree_le DESC, v.id_validation DESC""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les validations humaines.") from exc
 
     def recuperer_rapport(self, materiel_id: int) -> str | None:
         try:
