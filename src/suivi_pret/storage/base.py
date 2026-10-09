@@ -68,7 +68,7 @@ class Storage(ABC):
         raise NotImplementedError
 
     def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
-        """Remplace la photo indiquée par son annotation au format PNG."""
+        """Enregistre une copie annotée sans modifier la photo originale."""
         raise NotImplementedError
 
     def recuperer_rapport(self, materiel_id: int) -> str | None:

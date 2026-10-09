@@ -4,6 +4,7 @@ import html
 import asyncio
 import logging
 from io import BytesIO
+from pathlib import Path
 
 import gradio as gr
 from PIL import Image
@@ -83,6 +84,31 @@ TYPES_PHOTOS = (
     "connectique_gauche",
     "connectique_droite",
 )
+
+EXEMPLES_PHOTOS = {
+    "dessus": Path(__file__).resolve().parents[2] / "img" / "capot.jpg",
+    "dessous": Path(__file__).resolve().parents[2] / "img" / "dessous.jpg",
+    "ecran": Path(__file__).resolve().parents[2] / "img" / "ecran.jpg",
+    "clavier": Path(__file__).resolve().parents[2] / "img" / "clavier.jpg",
+    "connectique_gauche": Path(__file__).resolve().parents[2] / "img" / "gauche.jpg",
+    "connectique_droite": Path(__file__).resolve().parents[2] / "img" / "droite.jpg",
+}
+
+
+def creer_champ_photo(label_photo):
+    """Affiche un exemple à côté d'un champ de téléversement de photo."""
+    with gr.Row(elem_classes="ligne-photo"):
+        gr.Image(
+            value=str(EXEMPLES_PHOTOS[label_photo]),
+            label=f"Exemple - {label_photo}",
+            interactive=False,
+            buttons=[],
+            elem_classes="photo-exemple",
+        )
+        return gr.Image(
+            label=f"Photo {label_photo} de l'ordinateur",
+            type="filepath",
+        )
 
 
 def ajouter_photos_analyse(id_materiel, *photos):
@@ -541,6 +567,14 @@ CSS = """
     object-fit: contain !important;
 }
 
+#page .photo-exemple img {
+    max-height: 180px !important;
+}
+
+.ligne-photo {
+    align-items: start;
+}
+
 #titre {
     text-align: center;
     margin-bottom: 25px;
@@ -631,6 +665,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             titre_analyse = gr.Markdown("## Analyse de l'ordinateur")
 
             with gr.Row():
+                gr.Markdown("### Exemple")
                 gr.Markdown("### Photo avant")
                 gr.Markdown("### Nouvelle photo")
 
@@ -642,6 +677,13 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             )
             for label_photo in labels_photos:
                 with gr.Row():
+                    gr.Image(
+                        value=str(EXEMPLES_PHOTOS[label_photo.replace(" ", "_")]),
+                        label=f"Exemple - {label_photo}",
+                        interactive=False,
+                        buttons=[],
+                        elem_classes="photo-exemple",
+                    )
                     anciennes_images.append(
                         gr.Image(label=f"Photo avant - {label_photo}", interactive=False)
                     )
@@ -828,12 +870,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque = gr.Textbox(label="Remarque", lines=3)
             entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
 
-            image = gr.Image(label="Photo dessus de l'ordinateur", type="filepath")
-            image2 = gr.Image(label="Photo dessous de l'ordinateur", type="filepath")
-            image3 = gr.Image(label="Photo ecran de l'ordinateur", type="filepath")
-            image4 = gr.Image(label="Photo clavier de l'ordinateur", type="filepath")
-            image5 = gr.Image(label="Photo connectique gauche de l'ordinateur", type="filepath")
-            image6 = gr.Image(label="Photo connectique droite de l'ordinateur", type="filepath")
+            image = creer_champ_photo("dessus")
+            image2 = creer_champ_photo("dessous")
+            image3 = creer_champ_photo("ecran")
+            image4 = creer_champ_photo("clavier")
+            image5 = creer_champ_photo("connectique_gauche")
+            image6 = creer_champ_photo("connectique_droite")
 
             with gr.Row():
                 bouton_enregistrer = gr.Button("Enregistrer", variant="primary")
@@ -855,12 +897,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             modif_entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
 
             gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
-            modif_image = gr.Image(label="Photo dessus de l'ordinateur", type="filepath")
-            modif_image2 = gr.Image(label="Photo dessous de l'ordinateur", type="filepath")
-            modif_image3 = gr.Image(label="Photo ecran de l'ordinateur", type="filepath")
-            modif_image4 = gr.Image(label="Photo clavier de l'ordinateur", type="filepath")
-            modif_image5 = gr.Image(label="Photo connectique gauche de l'ordinateur", type="filepath")
-            modif_image6 = gr.Image(label="Photo connectique droite de l'ordinateur", type="filepath")
+            modif_image = creer_champ_photo("dessus")
+            modif_image2 = creer_champ_photo("dessous")
+            modif_image3 = creer_champ_photo("ecran")
+            modif_image4 = creer_champ_photo("clavier")
+            modif_image5 = creer_champ_photo("connectique_gauche")
+            modif_image6 = creer_champ_photo("connectique_droite")
 
             with gr.Row():
                 bouton_enregistrer_modif = gr.Button("Enregistrer les modifications", variant="primary")
