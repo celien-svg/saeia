@@ -91,9 +91,9 @@ Les six angles avant/après sont présentés côte à côte. L'analyse utilise l
 photos en base : une photo simplement sélectionnée dans l'interface n'est
 pas encore prise en compte. La sauvegarde du rapport est une action distincte.
 
-Actuellement, les annotations remplacent les photos après dans la base.
-Les images affichées ne sont pas rafraîchies automatiquement à la fin de
-l'analyse : rouvrir la page d'analyse pour charger les images annotées.
+Les annotations sont conservées comme copie des photos après, sans modifier
+les images originales utilisées par l'analyse. Rouvrir la page d'analyse pour
+charger les images annotées.
 
 ## Prompt et validation
 

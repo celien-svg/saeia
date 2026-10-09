@@ -1,5 +1,6 @@
 import json
 import asyncio
+import colorsys
 import math
 from io import BytesIO
 from pathlib import Path
@@ -16,7 +17,6 @@ PROMPT_TEMPLATE = (Path(__file__).with_name("prompt.md")).read_text(encoding="ut
 
 GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
 CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
-TAILLE_IMAGE_VLM = 1024
 
 
 class ZoneDetection(TypedDict):
@@ -34,7 +34,9 @@ def _refuser_constante_json(valeur: str) -> None:
     raise ValueError(f"constante JSON non standard : {valeur}")
 
 
-def valider_reponse_json(reponse: str) -> ReponseVLM:
+def valider_reponse_json(
+    reponse: str, *, largeur_image: int, hauteur_image: int,
+) -> ReponseVLM:
     """Parse et valide strictement la réponse JSON produite par le VLM."""
     try:
         donnees = json.loads(reponse, parse_constant=_refuser_constante_json)
@@ -63,9 +65,13 @@ def valider_reponse_json(reponse: str) -> ReponseVLM:
             or len(bbox) != 4
             or any(isinstance(coord, bool) or not isinstance(coord, (int, float)) for coord in bbox)
             or any(
-                not math.isfinite(coord) or not 0 <= coord <= TAILLE_IMAGE_VLM
+                not math.isfinite(coord) or coord < 0
                 for coord in bbox
             )
+            or bbox[0] > largeur_image
+            or bbox[2] > largeur_image
+            or bbox[1] > hauteur_image
+            or bbox[3] > hauteur_image
             or bbox[0] > bbox[2]
             or bbox[1] > bbox[3]
         ):
@@ -107,11 +113,17 @@ async def analyser_categorie(
     after_photo = categorie["after"]
 
     print(f" Analyse de la zone : {zone}...")
+    with Image.open(BytesIO(after_photo["image_data"])) as image:
+        largeur_image, hauteur_image = image.size
 
     try:
         result = await client.compare_images(
             model=model,
-            prompt=PROMPT_TEMPLATE.format(zone=zone),
+            prompt=PROMPT_TEMPLATE.format(
+                zone=zone,
+                largeur=largeur_image,
+                hauteur=hauteur_image,
+            ),
             image_before=before_photo["image_data"],
             image_after=after_photo["image_data"],
         )
@@ -120,7 +132,11 @@ async def analyser_categorie(
         return {"zone": zone, "error": str(exc), "zones": []}
 
     try:
-        parsed = valider_reponse_json(result.response)
+        parsed = valider_reponse_json(
+            result.response,
+            largeur_image=largeur_image,
+            hauteur_image=hauteur_image,
+        )
     except ValueError as exc:
         print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
         return {
@@ -204,13 +220,13 @@ async def analyser_materiel(
     return "\n\n".join(resultats)
 
 def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
-    """Dessine en rouge les BBoxes des défaut de l'ordinateur et retourne l'image annotée en octets."""
+    """Dessine les BBoxes des défauts avec une couleur distincte."""
     with Image.open(BytesIO(image_data)) as image:
         image_annotee = image.convert("RGB")
 
     dessin = ImageDraw.Draw(image_annotee)
     largeur, hauteur = image_annotee.size
-    for zone in zones:
+    for index, zone in enumerate(zones):
         bbox = zone.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
@@ -228,7 +244,12 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
         x_max = max(0, min(x_max, largeur))
         y_max = max(0, min(y_max, hauteur))
         if x_min <= x_max and y_min <= y_max:
-            dessin.rectangle((x_min, y_min, x_max, y_max), outline="red", width=4)
+            teinte = (index * 0.618033988749895) % 1
+            couleur = tuple(
+                round(composante * 255)
+                for composante in colorsys.hsv_to_rgb(teinte, 1, 1)
+            )
+            dessin.rectangle((x_min, y_min, x_max, y_max), outline=couleur, width=4)
 
     image_sortie = BytesIO()
     image_annotee.save(image_sortie, format="PNG")

@@ -81,7 +81,9 @@ class PostgresStorage(Storage):
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """SELECT type_photo, image_data, image_type
+                          """SELECT type_photo, COALESCE(image_annotee, image_data) AS image_data,
+                                        CASE WHEN image_annotee IS NOT NULL THEN 'image/png'
+                                              ELSE image_type END AS image_type
                        FROM photos_materiels
                        WHERE id_materiel = %s AND est_avant = FALSE""",
                     (materiel_id,),
@@ -111,12 +113,12 @@ class PostgresStorage(Storage):
             raise StorageError("Impossible de récupérer les photos en base.") from exc
 
     def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
-        """Remplace la photo indiquée par son annotation au format PNG."""
+        """Enregistre une copie annotée sans modifier la photo originale."""
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
                     """UPDATE photos_materiels
-                       SET image_data = %s, image_type = 'image/png'
+                       SET image_annotee = %s
                        WHERE id_photo = %s""",
                     (image_data, id_photo),
                 )
