@@ -85,15 +85,21 @@ Après le lancement avec Compose, ouvrir `http://localhost:7860`, puis suivre ce
    enregistrer avant de lancer la comparaison.
 4. Cliquer sur **Lancer l'analyse**, puis consulter le résultat texte.
 5. Cliquer sur **Sauvegarder le rapport** pour conserver le résultat.
-6. Utiliser **Liste des rapports** pour consulter l'historique du matériel.
+6. Dans **Validation humaine**, sélectionner une décision, puis indiquer si
+   nécessaire le nouveau type, la gravité et une remarque. La décision ne peut
+   être enregistrée qu'après la sauvegarde du rapport IA.
+7. Utiliser **Liste des rapports** pour consulter l'historique du matériel et
+   les décisions des gestionnaires.
 
 Les six angles avant/après sont présentés côte à côte. L'analyse utilise les
 photos en base : une photo simplement sélectionnée dans l'interface n'est
 pas encore prise en compte. La sauvegarde du rapport est une action distincte.
+Les validations humaines sont enregistrées séparément du rapport IA, avec leur
+date, afin de conserver la décision automatique et l'historique des corrections.
 
-Les annotations sont conservées comme copie des photos après, sans modifier
-les images originales utilisées par l'analyse. Rouvrir la page d'analyse pour
-charger les images annotées.
+Actuellement, les annotations remplacent les photos après dans la base.
+Les images affichées sont rechargées automatiquement à la fin de l'analyse :
+les boîtes englobantes apparaissent directement sur les photos après.
 
 ## Prompt et validation
 
@@ -112,6 +118,11 @@ Une réponse invalide produit un message d'erreur pour la zone.
 Le contrôle des boîtes englobantes vérifie quatre coordonnées numériques,
 finies, non négatives et ordonnées. Leur appartenance aux dimensions réelles
 de l'image n'est pas encore vérifiée.
+
+La validation humaine propose trois décisions exclusives : accepter une
+dégradation, modifier son type ou sa gravité, ou ignorer un faux positif.
+Une remarque peut être ajoutée à chaque décision. Les validations sont stockées
+dans `validations_humaines`, liée au rapport IA par `id_rapport`.
 
 ## Lancement avec Docker Compose
 
