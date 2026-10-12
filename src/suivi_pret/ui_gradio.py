@@ -418,11 +418,69 @@ def retour_accueil():
 
 
 def ouvrir_formulaire():
-    return (gr.update(visible=False), gr.update(visible=True), *vider_formulaire())
+    champs = list(vider_formulaire())
+    champs[8] = gr.update(choices=construire_choix_entites(), value=None)
+    return (gr.update(visible=False), gr.update(visible=True), *champs)
+
+
+def construire_choix_entites():
+    """Affiche les noms tout en transmettant les identifiants au service."""
+    try:
+        entites = service.lister_entites()
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des entités")
+        raise gr.Error(str(exc)) from exc
+    if not entites:
+        gr.Warning("Aucune entité disponible. Ajoutez une entité en base avant d'enregistrer un matériel.")
+    return [(entite["nom"], entite["id"]) for entite in entites]
 
 
 def annuler_formulaire():
     return (gr.update(visible=True), gr.update(visible=False), *vider_formulaire())
+
+
+CHAMPS_CONSULTATION = (
+    ("id_materiel", "Identifiant du matériel"),
+    ("nom", "Nom"),
+    ("modele", "Modèle"),
+    ("annee", "Année"),
+    ("etiquette_ulco", "Étiquette ULCO"),
+    ("etat", "État"),
+    ("localisation", "Localisation"),
+    ("descriptif", "Descriptif"),
+    ("remarque", "Remarque"),
+    ("entite_nom", "Entité"),
+)
+
+
+def ouvrir_consultation(id_materiel):
+    """Charge la fiche et les photos de référence sans modifier le matériel."""
+    try:
+        materiel = service.recuperer_materiel(id_materiel)
+        if materiel is None:
+            raise gr.Error("Matériel introuvable.")
+        photos = photos_en_data_uri(service.recuperer_photos(id_materiel))
+    except StorageError as exc:
+        logger.exception("Erreur lors de la consultation du matériel %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    return (
+        gr.update(visible=False),
+        gr.update(visible=True),
+        *("" if materiel[cle] is None else str(materiel[cle])
+          for cle, _ in CHAMPS_CONSULTATION),
+        *photos,
+    )
+
+
+def retour_liste_depuis_consultation():
+    """Ferme et vide la fiche consultée."""
+    return (
+        gr.update(visible=True),
+        gr.update(visible=False),
+        *([""] * len(CHAMPS_CONSULTATION)),
+        *([None] * len(TYPES_PHOTOS)),
+    )
 
 
 def enregistrer_materiel(
@@ -438,7 +496,7 @@ def enregistrer_materiel(
     if not (localisation or "").strip():
         erreurs.append("la localisation")
     if entite_id is None:
-        erreurs.append("l'identifiant de l'entité")
+        erreurs.append("l'entité")
     if erreurs:
         gr.Warning(f"Champs obligatoires manquants : {', '.join(erreurs)}.")
         return (gr.update(), gr.update(), version, *([gr.update()] * 15))
@@ -488,7 +546,7 @@ def ouvrir_modification(id_materiel, nom_materiel):
         materiel["localisation"] or "",
         materiel["descriptif"] or "",
         materiel["remarque"] or "",
-        materiel["entite_id"],
+        gr.update(choices=construire_choix_entites(), value=materiel["entite_id"]),
         None, None, None, None, None, None,
     )
 
@@ -511,7 +569,7 @@ def enregistrer_modification(
     if not (localisation or "").strip():
         erreurs.append("la localisation")
     if entite_id is None:
-        erreurs.append("l'identifiant de l'entité")
+        erreurs.append("l'entité")
     if erreurs:
         gr.Warning(f"Champs obligatoires manquants : {', '.join(erreurs)}.")
         return (gr.update(), gr.update(), version, *([gr.update()] * 16))
@@ -575,6 +633,23 @@ CSS = """
     align-items: start;
 }
 
+.fiche-materiel .titre-fiche,
+.fiche-materiel label,
+.fiche-materiel input,
+.fiche-materiel textarea {
+    text-align: center;
+}
+
+.fiche-materiel .actions-fiche {
+    justify-content: space-around;
+    border-top: 1px solid #d0d0d0;
+    padding-top: 16px;
+}
+
+.fiche-materiel .actions-fiche button {
+    max-width: 280px;
+}
+
 #titre {
     text-align: center;
     margin-bottom: 25px;
@@ -608,14 +683,20 @@ CSS = """
     margin: 0 !important;
 }
 
-#liste .colonne-nom { flex: 3 1 0 !important; }
-#liste .colonne-etat,
-#liste .colonne-localisation { flex: 2 1 0 !important; }
-#liste .colonne-action { flex: 1 1 0 !important; min-width: 0; }
+#liste .entetes-ordinateurs,
+#liste .ligne-ordinateur {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) repeat(2, minmax(0, 2fr)) repeat(4, minmax(0, 1fr));
+}
 
 #liste .entetes-ordinateurs > *,
 #liste .ligne-ordinateur > * {
     min-width: 0;
+}
+
+#liste .entetes-ordinateurs p,
+#liste .ligne-ordinateur p {
+    text-align: center;
 }
 
 .ligne-ordinateur p {
@@ -751,6 +832,40 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 )
                 statut_validation = gr.Markdown()
 
+        # ── Fiche en lecture seule ───────────────────────────────────────────
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_consultation:
+            gr.Markdown("## Consulter un ordinateur", elem_classes="titre-fiche")
+            gr.Markdown("Lecture seule", elem_classes="titre-fiche")
+            champs_par_cle = {}
+            labels_consultation = dict(CHAMPS_CONSULTATION)
+            for cles in (
+                ("nom", "modele", "annee"),
+                ("localisation", "etiquette_ulco", "etat"),
+                ("id_materiel", "entite_nom"),
+            ):
+                with gr.Row():
+                    for cle in cles:
+                        champs_par_cle[cle] = gr.Textbox(
+                            label=labels_consultation[cle], interactive=False,
+                        )
+            for cle in ("remarque", "descriptif"):
+                champs_par_cle[cle] = gr.Textbox(
+                    label=labels_consultation[cle], interactive=False, lines=3,
+                )
+            champs_consultation = [champs_par_cle[cle] for cle, _ in CHAMPS_CONSULTATION]
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            photos_consultation = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row():
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        photos_consultation.append(gr.Image(
+                            label=f"Photo {type_photo.replace('_', ' ')}",
+                            interactive=False,
+                            buttons=[],
+                        ))
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_retour_consultation = gr.Button("Retour à la liste")
+
         # ── Page de liste ────────────────────────────────────────────────────
         with gr.Column(visible=False) as page_liste:
             gr.Markdown("## Liste des ordinateurs", elem_id="titre")
@@ -769,6 +884,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                         gr.Markdown("Nom", elem_classes="colonne-nom")
                         gr.Markdown("État", elem_classes="colonne-etat")
                         gr.Markdown("Localisation", elem_classes="colonne-localisation")
+                        gr.Markdown("Voir", elem_classes="colonne-action")
                         gr.Markdown("Modifier", elem_classes="colonne-action")
                         gr.Markdown("Supprimer", elem_classes="colonne-action")
                         gr.Markdown("Analyse", elem_classes="colonne-action")
@@ -793,6 +909,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             gr.Markdown(echapper(materiel["etat"]), elem_classes="colonne-etat")
                             gr.Markdown(echapper(materiel["localisation"]), elem_classes="colonne-localisation")
 
+                            bouton_voir = gr.Button(
+                                "Voir", elem_classes="colonne-action",
+                                key=f"voir-{identifiant}",
+                            )
                             bouton_modifier = gr.Button(
                                 "Modifier", elem_classes="colonne-action",
                                 key=f"modifier-{identifiant}",
@@ -804,6 +924,15 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             bouton_analyse = gr.Button(
                                 "Analyse", elem_classes="colonne-action",
                                 key=f"analyse-{identifiant}",
+                            )
+
+                            bouton_voir.click(
+                                fn=lambda id_m=identifiant: ouvrir_consultation(id_m),
+                                inputs=None,
+                                outputs=[
+                                    page_liste, page_consultation,
+                                    *champs_consultation, *photos_consultation,
+                                ],
                             )
 
                             bouton_analyse.click(
@@ -857,56 +986,65 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             )
 
         # ── Page formulaire ajout ────────────────────────────────────────────
-        with gr.Column(visible=False) as page_formulaire:
-            gr.Markdown("## Ajouter un ordinateur")
-
-            nom = gr.Textbox(label="Nom *")
-            modele = gr.Textbox(label="Modèle")
-            annee = gr.Number(label="Année", precision=0)
-            etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
-            etat = gr.Dropdown(ETATS, value="OK", label="État *")
-            localisation = gr.Textbox(label="Localisation *")
-            descriptif = gr.Textbox(label="Descriptif", lines=3)
-            remarque = gr.Textbox(label="Remarque", lines=3)
-            entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
-
-            image = creer_champ_photo("dessus")
-            image2 = creer_champ_photo("dessous")
-            image3 = creer_champ_photo("ecran")
-            image4 = creer_champ_photo("clavier")
-            image5 = creer_champ_photo("connectique_gauche")
-            image6 = creer_champ_photo("connectique_droite")
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_formulaire:
+            gr.Markdown("## Ajouter un ordinateur", elem_classes="titre-fiche")
 
             with gr.Row():
-                bouton_enregistrer = gr.Button("Enregistrer", variant="primary")
-                bouton_annuler = gr.Button("Annuler")
+                nom = gr.Textbox(label="Nom *")
+                modele = gr.Textbox(label="Modèle")
+                annee = gr.Number(label="Année", precision=0)
+            with gr.Row():
+                localisation = gr.Textbox(label="Localisation *")
+                etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
+                etat = gr.Dropdown(ETATS, value="OK", label="État *")
+            entite_id = gr.Dropdown(choices=[], label="Entité *", interactive=True)
+            remarque = gr.Textbox(label="Remarque", lines=3)
+            descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
+
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            photos_ajout = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row():
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        with gr.Column():
+                            photos_ajout.append(creer_champ_photo(type_photo))
+            image, image2, image3, image4, image5, image6 = photos_ajout
+
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_annuler = gr.Button("Annuler", variant="stop")
+                bouton_enregistrer = gr.Button("Ajouter le matériel", variant="primary")
 
         # ── Page formulaire modification ─────────────────────────────────────
-        with gr.Column(visible=False) as page_modification:
-            gr.Markdown("## Modifier un ordinateur")
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_modification:
+            gr.Markdown("## Modifier un ordinateur", elem_classes="titre-fiche")
 
             modif_id = gr.State(None)
-            modif_nom = gr.Textbox(label="Nom *")
-            modif_modele = gr.Textbox(label="Modèle")
-            modif_annee = gr.Number(label="Année", precision=0)
-            modif_etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
-            modif_etat = gr.Dropdown(ETATS, value="OK", label="État *")
-            modif_localisation = gr.Textbox(label="Localisation *")
-            modif_descriptif = gr.Textbox(label="Descriptif", lines=3)
-            modif_remarque = gr.Textbox(label="Remarque", lines=3)
-            modif_entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
-
-            gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
-            modif_image = creer_champ_photo("dessus")
-            modif_image2 = creer_champ_photo("dessous")
-            modif_image3 = creer_champ_photo("ecran")
-            modif_image4 = creer_champ_photo("clavier")
-            modif_image5 = creer_champ_photo("connectique_gauche")
-            modif_image6 = creer_champ_photo("connectique_droite")
-
             with gr.Row():
+                modif_nom = gr.Textbox(label="Nom *")
+                modif_modele = gr.Textbox(label="Modèle")
+                modif_annee = gr.Number(label="Année", precision=0)
+            with gr.Row():
+                modif_localisation = gr.Textbox(label="Localisation *")
+                modif_etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
+                modif_etat = gr.Dropdown(ETATS, value="OK", label="État *")
+            modif_entite_id = gr.Dropdown(choices=[], label="Entité *", interactive=True)
+            modif_remarque = gr.Textbox(label="Remarque", lines=3)
+            modif_descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
+
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
+            photos_modification = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row():
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        with gr.Column():
+                            photos_modification.append(creer_champ_photo(type_photo))
+            (modif_image, modif_image2, modif_image3,
+             modif_image4, modif_image5, modif_image6) = photos_modification
+
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_annuler_modif = gr.Button("Annuler", variant="stop")
                 bouton_enregistrer_modif = gr.Button("Enregistrer les modifications", variant="primary")
-                bouton_annuler_modif = gr.Button("Annuler")
 
 
     # ── Câblage des événements ───────────────────────────────────────────────
@@ -929,6 +1067,16 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
     # Liste -> accueil
     bouton_retour_accueil.click(fn=retour_accueil, inputs=None, outputs=[page_accueil, page_liste])
+
+    # Consultation -> liste
+    bouton_retour_consultation.click(
+        fn=retour_liste_depuis_consultation,
+        inputs=None,
+        outputs=[
+            page_liste, page_consultation,
+            *champs_consultation, *photos_consultation,
+        ],
+    )
 
     # Analyse -> liste sans sauvegarde
     bouton_retour_analyse.click(

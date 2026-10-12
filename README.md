@@ -76,10 +76,16 @@ adresse accessible depuis le conteneur et renseigner le modèle disponible.
 
 ## Interface Gradio
 
-Après le lancement avec Compose, ouvrir `http://localhost:7860`, puis suivre ce parcours :
+Après le lancement avec Compose, ouvrir `http://localhost:7860`.
+
+Depuis la liste des ordinateurs, **Voir** ouvre la fiche du matériel en lecture
+seule : informations complètes et six photos de référence (avant prêt), lorsqu'elles
+sont disponibles. Aucun champ ni photo ne peut être modifié sur cette fiche.
+**Retour à la liste** ferme la consultation sans enregistrer de changement.
+
+Pour analyser un ordinateur, suivre ce parcours :
 
 1. Créer un ordinateur avec ses informations et ses photos de référence.
-   L'identifiant d'entité doit correspondre à une entité existant en base.
 2. Ouvrir **Analyse** depuis la liste des ordinateurs.
 3. Fournir les photos après et cliquer sur **Ajouter les photos** pour les
    enregistrer avant de lancer la comparaison.
