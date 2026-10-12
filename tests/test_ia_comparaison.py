@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, Mock
 from PIL import Image
 
 from src.suivi_pret.ollama_client.ia_comparaison import (
+    GRAVITES_AUTORISEES,
+    PROMPT_TEMPLATE,
     analyser_categorie,
     valider_reponse_json,
 )
@@ -20,6 +22,26 @@ def image_png(largeur: int = 600, hauteur: int = 600) -> bytes:
 
 
 class ValidationJsonTest(TestCase):
+    def test_prompt_formate_conserve_json_et_gravites_valides(self) -> None:
+        prompt = PROMPT_TEMPLATE.format(zone="ecran", largeur=600, hauteur=400)
+
+        self.assertIn('exactement : {"zones": []}', prompt)
+        self.assertIn("600x400 pixels", prompt)
+        self.assertIn("du même ecran", prompt)
+        exemple = prompt.split("Format attendu :\n", 1)[1].strip()
+        for coordonnee, valeur in (
+            ("x_min", "10"), ("y_min", "20"),
+            ("x_max", "100"), ("y_max", "200"),
+        ):
+            exemple = exemple.replace(coordonnee, valeur)
+        gravites = json.loads(exemple)["zones"][0]["gravite"].split("|")
+        self.assertEqual(set(gravites), GRAVITES_AUTORISEES - {"aucune"})
+        for gravite in gravites:
+            valider_reponse_json(
+                exemple.replace("|".join(gravites), gravite),
+                largeur_image=600, hauteur_image=400,
+            )
+
     def test_accepte_une_reponse_valide(self) -> None:
         reponse = json.dumps({
             "zones": [{
