@@ -34,6 +34,14 @@ class PostgresStorage(Storage):
             row_factory=dict_row,
         )
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute("SELECT id, nom FROM entites ORDER BY nom, id")
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les entités.") from exc
+
     def lister_materiels(self) -> list[dict[str, Any]]:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
@@ -52,10 +60,12 @@ class PostgresStorage(Storage):
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """SELECT id_materiel, nom, modele, annee, etiquette_ulco,
-                              etat, localisation, descriptif, remarque, entite_id
-                       FROM materiels
-                       WHERE id_materiel = %s""",
+                    """SELECT m.id_materiel, m.nom, m.modele, m.annee, m.etiquette_ulco,
+                              m.etat, m.localisation, m.descriptif, m.remarque,
+                              m.entite_id, e.nom AS entite_nom
+                       FROM materiels m
+                       JOIN entites e ON e.id = m.entite_id
+                       WHERE m.id_materiel = %s""",
                     (materiel_id,),
                 )
                 return cur.fetchone()

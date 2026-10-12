@@ -56,6 +56,24 @@ class PostgresAnalyseTest(TestCase):
                 self.assertEqual(params, (12,) if filtre is None else (12, filtre))
                 self.assertEqual("AND type_photo = %s" in requete, filtre is not None)
 
+    def test_liste_entites_ordonnee_avec_noms_et_identifiants(self):
+        entites = [{"id": 1, "nom": "ULCO"}]
+        self.curseur.fetchall.return_value = entites
+        self.assertEqual(self.storage.lister_entites(), entites)
+        self.assertEqual(
+            self.curseur.execute.call_args.args[0],
+            "SELECT id, nom FROM entites ORDER BY nom, id",
+        )
+
+    def test_fiche_materiel_charge_aussi_le_nom_entite(self):
+        materiel = {"id_materiel": 12, "entite_id": 1, "entite_nom": "ULCO"}
+        self.curseur.fetchone.return_value = materiel
+        self.assertEqual(self.storage.recuperer_materiel(12), materiel)
+        requete, params = self.curseur.execute.call_args.args
+        self.assertIn("e.nom AS entite_nom", requete)
+        self.assertIn("JOIN entites e ON e.id = m.entite_id", requete)
+        self.assertEqual(params, (12,))
+
     def test_lecture_des_photos_analyse_prefere_la_copie_annotee(self):
         self.storage.recuperer_photos_analyse(12)
         requete = self.curseur.execute.call_args.args[0]
@@ -94,6 +112,8 @@ class PostgresAnalyseTest(TestCase):
             self.storage.recuperer_photos_comparaison(12)
         with self.assertRaises(StorageError):
             self.storage.enregistrer_image_annotee(42, b"image")
+        with self.assertRaises(StorageError):
+            self.storage.lister_entites()
 
 
 class AnalyseStockageTest(IsolatedAsyncioTestCase):
