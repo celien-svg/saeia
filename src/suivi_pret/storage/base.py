@@ -25,6 +25,10 @@ class MaterielNotFoundError(StorageError):
 class Storage(ABC):
     """Définit les opérations de persistance requises par le métier."""
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        """Retourne les identifiants et noms des entités par ordre alphabétique."""
+        raise NotImplementedError
+
     @abstractmethod
     def lister_materiels(self) -> list[dict[str, Any]]:
         """Retourne les matériels du plus récent au plus ancien."""

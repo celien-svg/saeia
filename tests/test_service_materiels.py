@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Mapping
 from unittest import TestCase
+from unittest.mock import Mock
 
 from PIL import Image
 
@@ -74,6 +75,17 @@ class SuiviPretServiceTest(TestCase):
             self.service.creer_materiel(
                 " ", "", None, "", "OK", "S126", "", "", 1, {}
             )
+
+    def test_liste_les_entites_disponibles(self) -> None:
+        self.stockage.lister_entites = Mock(return_value=[{"id": 1, "nom": "ULCO"}])
+        self.assertEqual(self.service.lister_entites(), [{"id": 1, "nom": "ULCO"}])
+
+    def test_refuse_enregistrement_sans_entite(self) -> None:
+        with self.assertRaisesRegex(ValueError, "entité"):
+            self.service.creer_materiel(
+                "Portable", "", None, "", "OK", "S126", "", "", None, {},
+            )
+        self.assertIsNone(self.stockage.donnees)
 
     def test_prepare_plusieurs_photos_avec_leur_type(self) -> None:
         # permet de faire un dossier temporaire pour créer des fausses images pour le test

@@ -35,6 +35,10 @@ class SuiviPretService:
     def __init__(self, storage: Storage) -> None:
         self.storage = storage
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        """Retourne les entités disponibles pour associer un matériel."""
+        return self.storage.lister_entites()
+
     def lister_materiels(self) -> list[dict[str, Any]]:
         """Retourne les matériels disponibles."""
         return self.storage.lister_materiels()
@@ -116,7 +120,7 @@ class SuiviPretService:
         if not localisation:
             raise ValueError("La localisation est obligatoire.")
         if entite_id is None:
-            raise ValueError("L'identifiant de l'entité est obligatoire.")
+            raise ValueError("La sélection d'une entité est obligatoire.")
 
         return nom, localisation
 
