@@ -629,8 +629,51 @@ CSS = """
     max-height: 180px !important;
 }
 
+.grille-photos {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.grille-photos > .gradio-column {
+    min-width: 0;
+}
+
 .ligne-photo {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
+    gap: 12px;
+}
+
+.ligne-photo > .gradio-image {
+    min-width: 0;
+}
+
+.ligne-photo .image-container,
+.ligne-analyse .image-container {
+    width: 100% !important;
+}
+
+.ligne-analyse {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+}
+
+.entetes-analyse {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.entetes-analyse > * {
+    min-width: 0;
+}
+
+.ligne-analyse > .gradio-image {
+    min-width: 0;
 }
 
 .fiche-materiel .titre-fiche,
@@ -724,6 +767,36 @@ CSS = """
     padding: 12px;
     background: #f8f8f8;
 }
+
+@media (max-width: 900px) {
+    #page {
+        padding: 24px 5%;
+    }
+
+    .ligne-analyse {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entetes-analyse {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    #page {
+        padding: 16px 3%;
+    }
+
+    .grille-photos,
+    .ligne-photo,
+    .ligne-analyse {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .entetes-analyse {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
 """
 
 
@@ -745,7 +818,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         with gr.Column(visible=False) as page_analyse:
             titre_analyse = gr.Markdown("## Analyse de l'ordinateur")
 
-            with gr.Row():
+            with gr.Row(elem_classes="entetes-analyse"):
                 gr.Markdown("### Exemple")
                 gr.Markdown("### Photo avant")
                 gr.Markdown("### Nouvelle photo")
@@ -757,7 +830,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 "clavier", "connectique gauche", "connectique droite",
             )
             for label_photo in labels_photos:
-                with gr.Row():
+                with gr.Row(elem_classes="ligne-analyse"):
                     gr.Image(
                         value=str(EXEMPLES_PHOTOS[label_photo.replace(" ", "_")]),
                         label=f"Exemple - {label_photo}",
@@ -1004,7 +1077,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
             photos_ajout = []
             for debut in range(0, len(TYPES_PHOTOS), 2):
-                with gr.Row():
+                with gr.Row(elem_classes="grille-photos"):
                     for type_photo in TYPES_PHOTOS[debut:debut + 2]:
                         with gr.Column():
                             photos_ajout.append(creer_champ_photo(type_photo))
@@ -1035,7 +1108,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
             photos_modification = []
             for debut in range(0, len(TYPES_PHOTOS), 2):
-                with gr.Row():
+                with gr.Row(elem_classes="grille-photos"):
                     for type_photo in TYPES_PHOTOS[debut:debut + 2]:
                         with gr.Column():
                             photos_modification.append(creer_champ_photo(type_photo))
