@@ -55,9 +55,16 @@ class SuiviPretService:
         """Retourne les photos après prêt, avec leurs annotations éventuelles."""
         return self.storage.recuperer_photos_analyse(int(materiel_id))
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
-        """Enregistre le rapport IA associé au matériel."""
-        return self.storage.enregistrer_rapport(int(materiel_id), contenu)
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
+        """Enregistre le rapport avec sa provenance IA ou humaine."""
+        contenu = (contenu or "").strip()
+        if not contenu:
+            raise ValueError("Le rapport ne peut pas être vide.")
+        if origine not in {"ia", "humain"}:
+            raise ValueError("La provenance du rapport est invalide.")
+        return self.storage.enregistrer_rapport(int(materiel_id), contenu, origine)
 
     def enregistrer_validation_humaine(
         self,

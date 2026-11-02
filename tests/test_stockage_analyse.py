@@ -100,11 +100,11 @@ class PostgresAnalyseTest(TestCase):
 
     def test_retourne_l_identifiant_du_rapport(self):
         self.curseur.fetchone.return_value = {"id_rapport": 23}
-        rapport_id = self.storage.enregistrer_rapport(12, "rapport")
+        rapport_id = self.storage.enregistrer_rapport(12, "rapport", "humain")
         self.assertEqual(rapport_id, 23)
         requete, params = self.curseur.execute.call_args.args
         self.assertIn("RETURNING id_rapport", requete)
-        self.assertEqual(params, (12, "rapport"))
+        self.assertEqual(params, (12, "rapport", "humain"))
 
     def test_convertit_les_erreurs_postgres(self):
         self.storage._connexion.side_effect = psycopg.OperationalError("indisponible")
