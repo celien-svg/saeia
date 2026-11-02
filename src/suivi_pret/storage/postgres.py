@@ -135,14 +135,16 @@ class PostgresStorage(Storage):
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer l'image annotée en base.") from exc
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO rapports_ia (id_materiel, contenu)
-                       VALUES (%s, %s)
+                    """INSERT INTO rapports_ia (id_materiel, contenu, origine)
+                       VALUES (%s, %s, %s)
                        RETURNING id_rapport""",
-                    (materiel_id, contenu),
+                    (materiel_id, contenu, origine),
                 )
                 return cur.fetchone()["id_rapport"]
         except psycopg.Error as exc:
@@ -203,7 +205,7 @@ class PostgresStorage(Storage):
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """SELECT id_rapport, contenu, cree_le
+                    """SELECT id_rapport, contenu, origine, cree_le
                        FROM rapports_ia
                        WHERE id_materiel = %s
                        ORDER BY cree_le DESC, id_rapport DESC""",

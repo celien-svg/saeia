@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS rapports_ia (
     id_rapport SERIAL PRIMARY KEY,
     id_materiel INT NOT NULL REFERENCES materiels(id_materiel) ON DELETE CASCADE,
     contenu TEXT NOT NULL,
+    origine VARCHAR(10) NOT NULL DEFAULT 'ia' CHECK (origine IN ('ia', 'humain')),
     cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -76,3 +77,7 @@ CREATE TABLE IF NOT EXISTS validations_humaines (
 
 -- Migration des bases créées avec l'ancienne contrainte (un seul rapport)
 ALTER TABLE rapports_ia DROP CONSTRAINT IF EXISTS rapports_ia_id_materiel_key;
+ALTER TABLE rapports_ia ADD COLUMN IF NOT EXISTS origine VARCHAR(10) NOT NULL DEFAULT 'ia';
+ALTER TABLE rapports_ia DROP CONSTRAINT IF EXISTS rapports_ia_origine_check;
+ALTER TABLE rapports_ia ADD CONSTRAINT rapports_ia_origine_check
+    CHECK (origine IN ('ia', 'humain'));

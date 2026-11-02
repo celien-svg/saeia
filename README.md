@@ -90,18 +90,17 @@ Pour analyser un ordinateur, suivre ce parcours :
 3. Fournir les photos après et cliquer sur **Ajouter les photos** pour les
    enregistrer avant de lancer la comparaison.
 4. Cliquer sur **Lancer l'analyse**, puis consulter le résultat texte.
-5. Cliquer sur **Sauvegarder le rapport** pour conserver le résultat.
-6. Dans **Validation humaine**, sélectionner une décision, puis indiquer si
-   nécessaire le nouveau type, la gravité et une remarque. La décision ne peut
-   être enregistrée qu'après la sauvegarde du rapport IA.
+5. Modifier directement le texte de la réponse de l'IA si nécessaire.
+6. Cliquer sur **Enregistrer le rapport** pour conserver le texte affiché.
 7. Utiliser **Liste des rapports** pour consulter l'historique du matériel et
-   les décisions des gestionnaires.
+   distinguer les versions IA des versions corrigées par un humain.
 
 Les six angles avant/après sont présentés côte à côte. L'analyse utilise les
 photos en base : une photo simplement sélectionnée dans l'interface n'est
 pas encore prise en compte. La sauvegarde du rapport est une action distincte.
-Les validations humaines sont enregistrées séparément du rapport IA, avec leur
-date, afin de conserver la décision automatique et l'historique des corrections.
+Chaque sauvegarde crée une version dans l'historique, avec sa date et son
+origine (`ia` ou `humain`), afin de conserver le texte automatique et les
+corrections successives.
 
 Actuellement, les annotations remplacent les photos après dans la base.
 Les images affichées sont rechargées automatiquement à la fin de l'analyse :

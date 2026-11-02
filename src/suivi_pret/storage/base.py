@@ -46,8 +46,10 @@ class Storage(ABC):
         """Retourne les photos après prêt (est_avant=FALSE) d'un matériel."""
         raise NotImplementedError
 
-    def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
-        """Enregistre le dernier rapport IA d'un matériel."""
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
+        """Enregistre un rapport et indique s'il a été corrigé par un humain."""
         raise NotImplementedError
 
     def enregistrer_validation_humaine(
