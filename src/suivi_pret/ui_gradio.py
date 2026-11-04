@@ -700,8 +700,9 @@ CSS = """
 
 #liste {
     margin-top: 24px;
-    padding: 13px 25px;
+    padding: 13px clamp(10px, 3vw, 25px);
     background: #dddddd;
+    overflow: hidden;
 }
 
 .ligne-ordinateur {
@@ -760,6 +761,15 @@ CSS = """
     background: #4d4d4d !important;
 }
 
+.page-liste-actions {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.page-liste-actions > * {
+    min-width: 0;
+}
+
 #zone-ia {
     margin-top: 16px;
     border: 1px solid #d0d0d0;
@@ -780,6 +790,63 @@ CSS = """
     .entetes-analyse {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .page-liste-actions {
+        flex-wrap: wrap;
+    }
+
+    .page-liste-actions > .spacer {
+        display: none;
+    }
+
+    #liste .entetes-ordinateurs {
+        display: none;
+    }
+
+    #liste .ligne-ordinateur {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 8px;
+        margin-bottom: 12px;
+        padding: 10px;
+        border-radius: 6px;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) {
+        grid-column: 1 / -1;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) p {
+        text-align: left;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(1)::before,
+    #liste .ligne-ordinateur > *:nth-child(2)::before,
+    #liste .ligne-ordinateur > *:nth-child(3)::before {
+        display: block;
+        margin-bottom: 2px;
+        color: #d7d7d7;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(1)::before {
+        content: "Nom";
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(2)::before {
+        content: "État";
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(3)::before {
+        content: "Localisation";
+    }
+
+    #liste .ligne-ordinateur button {
+        width: 100%;
+        padding: 6px 4px !important;
+        white-space: normal !important;
+    }
 }
 
 @media (max-width: 600px) {
@@ -795,6 +862,28 @@ CSS = """
 
     .entetes-analyse {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .page-liste-actions {
+        gap: 8px;
+    }
+
+    .page-liste-actions > button {
+        flex: 1 1 140px;
+    }
+
+    #liste {
+        margin-top: 14px;
+        padding: 10px;
+    }
+
+    #liste .ligne-ordinateur {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 8px;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) {
+        overflow-wrap: anywhere;
     }
 }
 """
@@ -943,9 +1032,9 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         with gr.Column(visible=False) as page_liste:
             gr.Markdown("## Liste des ordinateurs", elem_id="titre")
 
-            with gr.Row():
+            with gr.Row(elem_classes="page-liste-actions"):
                 bouton_ajouter = gr.Button("Ajouter un ordinateur")
-                gr.Column(scale=3)
+                gr.Column(elem_classes="spacer", scale=3)
                 bouton_retour_accueil = gr.Button("Accueil")
 
             @gr.render(inputs=actualisation)
