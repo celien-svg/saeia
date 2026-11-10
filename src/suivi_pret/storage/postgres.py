@@ -87,13 +87,11 @@ class PostgresStorage(Storage):
             raise StorageError("Impossible de récupérer les photos.") from exc
 
     def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
-        """Retourne les photos après prêt, éventuellement annotées par l'IA."""
+        """Retourne les photos après prêt sans superposer les annotations."""
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                          """SELECT type_photo, COALESCE(image_annotee, image_data) AS image_data,
-                                        CASE WHEN image_annotee IS NOT NULL THEN 'image/png'
-                                              ELSE image_type END AS image_type
+                    """SELECT type_photo, image_data, image_type
                        FROM photos_materiels
                        WHERE id_materiel = %s AND est_avant = FALSE""",
                     (materiel_id,),
@@ -101,6 +99,21 @@ class PostgresStorage(Storage):
                 return cur.fetchall()
         except psycopg.Error as exc:
             raise StorageError("Impossible de récupérer les photos d'analyse.") from exc
+
+    def recuperer_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos conservées lors de la sauvegarde d'un rapport."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT type_photo, est_avant, image_data, image_type
+                       FROM photos_rapports_ia
+                       WHERE id_rapport = %s
+                       ORDER BY type_photo, est_avant DESC""",
+                    (rapport_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos du rapport.") from exc
 
     def recuperer_photos_comparaison(
         self, materiel_id: int, type_photo: str | None = None,
@@ -144,7 +157,34 @@ class PostgresStorage(Storage):
                        RETURNING id_rapport""",
                     (materiel_id, contenu),
                 )
-                return cur.fetchone()["id_rapport"]
+                rapport_id = cur.fetchone()["id_rapport"]
+                cur.execute(
+                    """INSERT INTO photos_rapports_ia (
+                           id_rapport, type_photo, est_avant, image_data, image_type
+                       )
+                       SELECT %s, type_photo, TRUE,
+                              COALESCE(image_precedente, image_data),
+                              COALESCE(image_precedente_type, image_type)
+                       FROM photos_materiels
+                       WHERE id_materiel = %s AND est_avant = TRUE""",
+                    (rapport_id, materiel_id),
+                )
+                cur.execute(
+                    """INSERT INTO photos_rapports_ia (
+                           id_rapport, type_photo, est_avant, image_data, image_type
+                       )
+                       SELECT %s, type_photo, FALSE, image_data, image_type
+                       FROM photos_materiels
+                       WHERE id_materiel = %s AND est_avant = FALSE""",
+                    (rapport_id, materiel_id),
+                )
+                cur.execute(
+                    """UPDATE photos_materiels
+                       SET image_precedente = NULL, image_precedente_type = NULL
+                       WHERE id_materiel = %s AND est_avant = TRUE""",
+                    (materiel_id,),
+                )
+                return rapport_id
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer le rapport IA.") from exc
 
@@ -251,7 +291,10 @@ class PostgresStorage(Storage):
                            ) VALUES (%s, %s, TRUE, %s, %s)
                            ON CONFLICT (id_materiel, type_photo, est_avant)
                            DO UPDATE SET image_data = EXCLUDED.image_data,
-                                         image_type = EXCLUDED.image_type""",
+                                         image_type = EXCLUDED.image_type,
+                                         image_precedente = NULL,
+                                         image_precedente_type = NULL,
+                                         image_annotee = NULL""",
                         (
                             id_materiel,
                             photo["type_photo"],
@@ -311,7 +354,10 @@ class PostgresStorage(Storage):
                            ) VALUES (%s, %s, TRUE, %s, %s)
                            ON CONFLICT (id_materiel, type_photo, est_avant)
                            DO UPDATE SET image_data = EXCLUDED.image_data,
-                                         image_type = EXCLUDED.image_type""",
+                                         image_type = EXCLUDED.image_type,
+                                         image_precedente = NULL,
+                                         image_precedente_type = NULL,
+                                         image_annotee = NULL""",
                         (
                             materiel_id,
                             photo["type_photo"],
@@ -339,7 +385,8 @@ class PostgresStorage(Storage):
                            ) VALUES (%s, %s, FALSE, %s, %s)
                            ON CONFLICT (id_materiel, type_photo, est_avant)
                            DO UPDATE SET image_data = EXCLUDED.image_data,
-                                         image_type = EXCLUDED.image_type""",
+                                         image_type = EXCLUDED.image_type,
+                                         image_annotee = NULL""",
                         (
                             materiel_id,
                             photo["type_photo"],
@@ -349,6 +396,28 @@ class PostgresStorage(Storage):
                     )
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer les photos d'analyse.") from exc
+
+    def promouvoir_photos_analyse(self, materiel_id: int) -> None:
+        """Remplace les références par les images après, en conservant la version précédente."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE photos_materiels AS avant
+                       SET image_precedente = avant.image_data,
+                           image_precedente_type = avant.image_type,
+                           image_data = apres.image_data,
+                           image_type = apres.image_type,
+                           image_annotee = NULL
+                       FROM photos_materiels AS apres
+                       WHERE avant.id_materiel = %s
+                         AND avant.est_avant = TRUE
+                         AND apres.id_materiel = avant.id_materiel
+                         AND apres.type_photo = avant.type_photo
+                         AND apres.est_avant = FALSE""",
+                    (materiel_id,),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de remplacer les photos de référence.") from exc
 
     def supprimer_materiel(self, materiel_id: int) -> None:
         try:

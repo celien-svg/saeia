@@ -46,6 +46,10 @@ class Storage(ABC):
         """Retourne les photos après prêt (est_avant=FALSE) d'un matériel."""
         raise NotImplementedError
 
+    def recuperer_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après conservées avec un rapport."""
+        raise NotImplementedError
+
     def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
         """Enregistre le dernier rapport IA d'un matériel."""
         raise NotImplementedError
@@ -73,6 +77,10 @@ class Storage(ABC):
 
     def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
         """Enregistre une copie annotée sans modifier la photo originale."""
+        raise NotImplementedError
+
+    def promouvoir_photos_analyse(self, materiel_id: int) -> None:
+        """Remplace les photos de référence par les photos après analyse."""
         raise NotImplementedError
 
     def recuperer_rapport(self, materiel_id: int) -> str | None:

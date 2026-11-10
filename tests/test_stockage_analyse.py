@@ -74,11 +74,20 @@ class PostgresAnalyseTest(TestCase):
         self.assertIn("JOIN entites e ON e.id = m.entite_id", requete)
         self.assertEqual(params, (12,))
 
-    def test_lecture_des_photos_analyse_prefere_la_copie_annotee(self):
+    def test_lecture_des_photos_analyse_retourne_l_image_sans_annotation(self):
         self.storage.recuperer_photos_analyse(12)
         requete = self.curseur.execute.call_args.args[0]
-        self.assertIn("COALESCE(image_annotee, image_data)", requete)
+        self.assertIn("SELECT type_photo, image_data, image_type", requete)
+        self.assertNotIn("image_annotee", requete)
         self.assertIn("WHERE id_materiel = %s AND est_avant = FALSE", requete)
+
+    def test_lecture_des_photos_du_rapport(self):
+        photos = [{"type_photo": "ecran", "est_avant": True}]
+        self.curseur.fetchall.return_value = photos
+        self.assertEqual(self.storage.recuperer_photos_rapport(23), photos)
+        requete, params = self.curseur.execute.call_args.args
+        self.assertIn("FROM photos_rapports_ia", requete)
+        self.assertEqual(params, (23,))
 
     def test_enregistrement_png_sur_la_photo_indiquee(self):
         self.storage.enregistrer_image_annotee(42, b"image annotee")
@@ -102,9 +111,32 @@ class PostgresAnalyseTest(TestCase):
         self.curseur.fetchone.return_value = {"id_rapport": 23}
         rapport_id = self.storage.enregistrer_rapport(12, "rapport")
         self.assertEqual(rapport_id, 23)
+        requetes = [appel.args for appel in self.curseur.execute.call_args_list]
+        self.assertIn("RETURNING id_rapport", requetes[0][0])
+        self.assertEqual(requetes[0][1], (12, "rapport"))
+        self.assertIn("photos_rapports_ia", requetes[1][0])
+        self.assertIn("COALESCE(image_precedente, image_data)", requetes[1][0])
+        self.assertIn("photos_rapports_ia", requetes[2][0])
+        self.assertIn("SET image_precedente = NULL", requetes[3][0])
+        self.assertEqual(requetes[3][1], (12,))
+
+    def test_promeut_les_photos_apres_en_conservant_la_version_precedente(self):
+        self.storage.promouvoir_photos_analyse(12)
         requete, params = self.curseur.execute.call_args.args
-        self.assertIn("RETURNING id_rapport", requete)
-        self.assertEqual(params, (12, "rapport"))
+        self.assertIn("image_precedente = avant.image_data", requete)
+        self.assertIn("image_data = apres.image_data", requete)
+        self.assertIn("apres.est_avant = FALSE", requete)
+        self.assertEqual(params, (12,))
+
+    def test_remplace_une_photo_apres_sans_conserver_une_annotation_obsolete(self):
+        self.storage.ajouter_photos_analyse(12, [{
+            "type_photo": "ecran",
+            "image_data": b"photo",
+            "image_type": "image/png",
+        }])
+        requete, params = self.curseur.execute.call_args.args
+        self.assertIn("image_annotee = NULL", requete)
+        self.assertEqual(params, (12, "ecran", b"photo", "image/png"))
 
     def test_convertit_les_erreurs_postgres(self):
         self.storage._connexion.side_effect = psycopg.OperationalError("indisponible")

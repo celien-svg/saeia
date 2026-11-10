@@ -80,6 +80,18 @@ class SuiviPretServiceTest(TestCase):
         self.stockage.lister_entites = Mock(return_value=[{"id": 1, "nom": "ULCO"}])
         self.assertEqual(self.service.lister_entites(), [{"id": 1, "nom": "ULCO"}])
 
+    def test_transmet_la_promotion_des_photos_et_la_lecture_du_rapport(self) -> None:
+        photos = [{"type_photo": "ecran", "est_avant": True}]
+        self.stockage.promouvoir_photos_analyse = Mock()
+        self.stockage.recuperer_photos_rapport = Mock(return_value=photos)
+
+        self.service.promouvoir_photos_analyse(7)
+        resultat = self.service.recuperer_photos_rapport(23)
+
+        self.stockage.promouvoir_photos_analyse.assert_called_once_with(7)
+        self.stockage.recuperer_photos_rapport.assert_called_once_with(23)
+        self.assertEqual(resultat, photos)
+
     def test_refuse_enregistrement_sans_entite(self) -> None:
         with self.assertRaisesRegex(ValueError, "entité"):
             self.service.creer_materiel(

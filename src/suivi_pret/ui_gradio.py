@@ -137,16 +137,26 @@ def ajouter_photos_analyse(id_materiel, *photos):
 
 
 async def lancer_analyse(id_materiel, *photos):
-    """Compare les photos puis recharge immédiatement les images annotées."""
+    """Compare les photos, actualise les références et recharge les images brutes."""
     if id_materiel is None:
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
 
     try:
         rapport = await analyser_materiel(id_materiel, storage=service.storage)
+        await asyncio.to_thread(service.promouvoir_photos_analyse, id_materiel)
+        photos_reference = await asyncio.to_thread(
+            service.recuperer_photos, id_materiel,
+        )
         photos_analyse = await asyncio.to_thread(
             service.recuperer_photos_analyse, id_materiel,
         )
-        return rapport, *photos_en_data_uri(photos_analyse)
+        return (
+            rapport,
+            *photos_en_data_uri(photos_reference),
+            *photos_en_data_uri(photos_analyse),
+            gr.update(value=None),
+            *([None] * (2 * len(TYPES_PHOTOS))),
+        )
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -158,11 +168,22 @@ def sauvegarder_rapport(id_materiel, rapport):
         raise gr.Error("Aucun ordinateur n'est sélectionné.")
     if not rapport or rapport.startswith("Aucun rapport enregistré"):
         gr.Warning("Lancez une analyse avant de sauvegarder un rapport.")
-        return "Aucun rapport à sauvegarder.", gr.update()
+        return (
+            "Aucun rapport à sauvegarder.",
+            gr.update(),
+            *([None] * (2 * len(TYPES_PHOTOS))),
+        )
 
     try:
         rapport_id = service.enregistrer_rapport(id_materiel, rapport)
         choix_rapports = construire_choix_rapports(id_materiel)
+        photos = service.recuperer_photos_rapport(rapport_id)
+        photos_avant = photos_en_data_uri(
+            [photo for photo in photos if photo["est_avant"]]
+        )
+        photos_apres = photos_en_data_uri(
+            [photo for photo in photos if not photo["est_avant"]]
+        )
     except StorageError as exc:
         logger.exception("Erreur lors de l'enregistrement du rapport %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -174,6 +195,8 @@ def sauvegarder_rapport(id_materiel, rapport):
             choices=choix_rapports,
             value=rapport_id,
         ),
+        *photos_avant,
+        *photos_apres,
     )
 
 
@@ -315,13 +338,24 @@ def construire_choix_rapports(id_materiel):
 
 
 def charger_rapport_selectionne(rapport_id, id_materiel):
-    """Affiche le contenu du rapport choisi pour la validation humaine."""
+    """Affiche le rapport choisi et les photos conservées avec celui-ci."""
     if rapport_id is None or id_materiel is None:
-        return ""
-    rapports = service.lister_rapports(id_materiel)
-    for rapport in rapports:
-        if rapport["id_rapport"] == int(rapport_id):
-            return rapport["contenu"]
+        return "", *([None] * (2 * len(TYPES_PHOTOS)))
+    try:
+        rapports = service.lister_rapports(id_materiel)
+        for rapport in rapports:
+            if rapport["id_rapport"] == int(rapport_id):
+                photos = service.recuperer_photos_rapport(int(rapport_id))
+                avant = photos_en_data_uri(
+                    [photo for photo in photos if photo["est_avant"]]
+                )
+                apres = photos_en_data_uri(
+                    [photo for photo in photos if not photo["est_avant"]]
+                )
+                return rapport["contenu"], *avant, *apres
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement du rapport %s", rapport_id)
+        raise gr.Error(str(exc)) from exc
     raise gr.Error("Le rapport sélectionné n'existe plus.")
 
 
@@ -346,26 +380,37 @@ def photos_en_data_uri(photos):
 def ouvrir_analyse(id_materiel, nom):
     """Ouvre la collecte de photos liée à l'ordinateur sélectionné."""
     try:
-        anciennes_photos = photos_en_data_uri(
+        photos_reference = photos_en_data_uri(
             service.recuperer_photos(id_materiel)
         )
         photos_analyse = photos_en_data_uri(
             service.recuperer_photos_analyse(id_materiel)
         )
         rapports = service.lister_rapports(id_materiel)
+        rapport_recent = rapports[0] if rapports else None
+        photos_rapport = (
+            service.recuperer_photos_rapport(rapport_recent["id_rapport"])
+            if rapport_recent else []
+        )
     except StorageError as exc:
         logger.exception("Erreur lors du chargement des photos du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
 
+    photos_rapport_avant = photos_en_data_uri(
+        [photo for photo in photos_rapport if photo["est_avant"]]
+    )
+    photos_rapport_apres = photos_en_data_uri(
+        [photo for photo in photos_rapport if not photo["est_avant"]]
+    )
     return (
         gr.update(visible=False),
         gr.update(visible=True),
         id_materiel,
         gr.update(value=f"## Analyse de l'ordinateur : {echapper(nom)}"),
-        *anciennes_photos,
+        *photos_reference,
         *photos_analyse,
         "",
-        rapports[0]["contenu"] if rapports else "",
+        rapport_recent["contenu"] if rapport_recent else "",
         "",
         gr.update(
             choices=[
@@ -376,8 +421,10 @@ def ouvrir_analyse(id_materiel, nom):
                 )
                 for rapport in rapports
             ],
-            value=rapports[0]["id_rapport"] if rapports else None,
+            value=rapport_recent["id_rapport"] if rapport_recent else None,
         ),
+        *photos_rapport_avant,
+        *photos_rapport_apres,
         [],
         "",
         "legere",
@@ -400,6 +447,7 @@ def retour_liste_depuis_analyse():
         "",  # zone réponse IA
         "",  # liste des rapports
         gr.update(choices=[], value=None),  # rapport sélectionné pour validation
+        *([None] * (2 * len(TYPES_PHOTOS))),
         [],  # décision
         "",  # type corrigé
         "legere",  # gravité corrigée
@@ -799,6 +847,22 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     info="Sélectionnez le rapport IA auquel cette décision doit être liée.",
                     interactive=True,
                 )
+                gr.Markdown("### Photos conservées avec le rapport sélectionné")
+                images_rapport_avant = []
+                images_rapport_apres = []
+                for debut in range(0, len(TYPES_PHOTOS), 2):
+                    with gr.Row():
+                        for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                            images_rapport_avant.append(gr.Image(
+                                label=f"Avant - {type_photo.replace('_', ' ')}",
+                                interactive=False,
+                                buttons=[],
+                            ))
+                            images_rapport_apres.append(gr.Image(
+                                label=f"Après - {type_photo.replace('_', ' ')}",
+                                interactive=False,
+                                buttons=[],
+                            ))
                 decision_humaine = gr.CheckboxGroup(
                     choices=[
                         ("Accepter une dégradation", "accepter_degradation"),
@@ -944,7 +1008,9 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                     *anciennes_images, *nouvelles_images,
                                     statut_photos_analyse, reponse_ia,
                                     liste_rapports,
-                                    rapport_id_validation, decision_humaine,
+                                    rapport_id_validation,
+                                    *images_rapport_avant, *images_rapport_apres,
+                                    decision_humaine,
                                     type_anomalie, gravite, ajouter_remarque,
                                     remarque_validation, statut_validation,
                                 ],
@@ -1087,7 +1153,9 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             analyse_id_materiel, titre_analyse,
             *anciennes_images, *nouvelles_images,
             statut_photos_analyse, reponse_ia, liste_rapports,
-            rapport_id_validation, decision_humaine, type_anomalie, gravite,
+            rapport_id_validation,
+            *images_rapport_avant, *images_rapport_apres,
+            decision_humaine, type_anomalie, gravite,
             ajouter_remarque, remarque_validation, statut_validation,
         ],
     )
@@ -1101,19 +1169,25 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     bouton_lancer_analyse.click(
         fn=lancer_analyse,
         inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
-        outputs=[reponse_ia, *nouvelles_images],
+        outputs=[
+            reponse_ia, *anciennes_images, *nouvelles_images,
+            rapport_id_validation, *images_rapport_avant, *images_rapport_apres,
+        ],
     )
 
     bouton_sauvegarder_rapport.click(
         fn=sauvegarder_rapport,
         inputs=[analyse_id_materiel, reponse_ia],
-        outputs=[statut_photos_analyse, rapport_id_validation],
+        outputs=[
+            statut_photos_analyse, rapport_id_validation,
+            *images_rapport_avant, *images_rapport_apres,
+        ],
     )
 
-    rapport_id_validation.change(
+    rapport_id_validation.input(
         fn=charger_rapport_selectionne,
         inputs=[rapport_id_validation, analyse_id_materiel],
-        outputs=[reponse_ia],
+        outputs=[reponse_ia, *images_rapport_avant, *images_rapport_apres],
     )
 
     bouton_enregistrer_validation.click(

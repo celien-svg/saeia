@@ -99,13 +99,17 @@ Pour analyser un ordinateur, suivre ce parcours :
 
 Les six angles avant/après sont présentés côte à côte. L'analyse utilise les
 photos en base : une photo simplement sélectionnée dans l'interface n'est
-pas encore prise en compte. La sauvegarde du rapport est une action distincte.
+pas encore prise en compte. À la fin de l'analyse, chaque photo après remplace
+la photo de référence du même angle, sans boîte rouge; la photo précédente est
+conservée avec le rapport lors de sa sauvegarde. Sélectionner un rapport affiche
+les photos avant/après qui lui correspondent. La sauvegarde du rapport est une action distincte.
 Les validations humaines sont enregistrées séparément du rapport IA, avec leur
 date, afin de conserver la décision automatique et l'historique des corrections.
 
-Actuellement, les annotations remplacent les photos après dans la base.
-Les images affichées sont rechargées automatiquement à la fin de l'analyse :
-les boîtes englobantes apparaissent directement sur les photos après.
+Les images de référence et après sont rechargées automatiquement à la fin de
+l'analyse. Les rapports déjà enregistrés conservent leurs propres copies des
+photos, même lorsque les images de référence sont remplacées par une analyse
+ultérieure.
 
 ## Prompt et validation
 
@@ -159,7 +163,9 @@ externe peut aussi être utilisé via une adresse accessible depuis le conteneur
 Le schéma SQL est appliqué automatiquement lors de l'initialisation d'un volume
 PostgreSQL neuf. Les changements ultérieurs du script ne sont pas rejoués sur
 une base existante : leurs évolutions de schéma doivent y être appliquées
-explicitement.
+explicitement. Pour une base existante, réexécuter
+`database/01-tables.sql` afin d'ajouter les colonnes d'historique des photos et
+la table des photos liées aux rapports.
 
 Pour consulter les journaux ou arrêter les services :
 

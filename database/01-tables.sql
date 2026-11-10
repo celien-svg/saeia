@@ -50,8 +50,15 @@ CREATE TABLE IF NOT EXISTS photos_materiels (
     image_data BYTEA NOT NULL,
     image_type VARCHAR(50) NOT NULL,
     image_annotee BYTEA,
+    image_precedente BYTEA,
+    image_precedente_type VARCHAR(50),
     UNIQUE (id_materiel, type_photo, est_avant)
 );
+
+ALTER TABLE photos_materiels
+    ADD COLUMN IF NOT EXISTS image_precedente BYTEA;
+ALTER TABLE photos_materiels
+    ADD COLUMN IF NOT EXISTS image_precedente_type VARCHAR(50);
 
 -- 5. Conserver l'historique des rapports produits par l'IA
 CREATE TABLE IF NOT EXISTS rapports_ia (
@@ -61,7 +68,17 @@ CREATE TABLE IF NOT EXISTS rapports_ia (
     cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Conserver les décisions humaines associées aux rapports IA
+-- 6. Conserver les photos avant/après correspondant à chaque rapport
+CREATE TABLE IF NOT EXISTS photos_rapports_ia (
+    id_rapport INT NOT NULL REFERENCES rapports_ia(id_rapport) ON DELETE CASCADE,
+    type_photo VARCHAR(50) NOT NULL,
+    est_avant BOOLEAN NOT NULL,
+    image_data BYTEA NOT NULL,
+    image_type VARCHAR(50) NOT NULL,
+    PRIMARY KEY (id_rapport, type_photo, est_avant)
+);
+
+-- 7. Conserver les décisions humaines associées aux rapports IA
 CREATE TABLE IF NOT EXISTS validations_humaines (
     id_validation SERIAL PRIMARY KEY,
     id_rapport INT NOT NULL REFERENCES rapports_ia(id_rapport) ON DELETE CASCADE,

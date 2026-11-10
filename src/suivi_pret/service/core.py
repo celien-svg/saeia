@@ -55,6 +55,10 @@ class SuiviPretService:
         """Retourne les photos après prêt, avec leurs annotations éventuelles."""
         return self.storage.recuperer_photos_analyse(int(materiel_id))
 
+    def recuperer_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après associées à un rapport."""
+        return self.storage.recuperer_photos_rapport(int(rapport_id))
+
     def enregistrer_rapport(self, materiel_id: int, contenu: str) -> int:
         """Enregistre le rapport IA associé au matériel."""
         return self.storage.enregistrer_rapport(int(materiel_id), contenu)
@@ -196,3 +200,7 @@ class SuiviPretService:
         """Enregistre les photos d'analyse (est_avant=FALSE) pour un matériel."""
         photos_data = self._preparer_photos_data(photos)
         self.storage.ajouter_photos_analyse(int(materiel_id), photos_data)
+
+    def promouvoir_photos_analyse(self, materiel_id: int) -> None:
+        """Remplace les références par les photos après analyse."""
+        self.storage.promouvoir_photos_analyse(int(materiel_id))
