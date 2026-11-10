@@ -40,33 +40,25 @@ Fonctionnalités et travaux techniques réalisés :
 - Rechargement des photos de restitution, éventuellement annotées, à l'ouverture de la page d'analyse.
 - Réalisation de la carte technique Trello « Rendre asynchrone le client Ollama », sans identifiant US dans l'export.
 - Mutualisation du transport HTTP asynchrone, de la fermeture des connexions et de la gestion des erreurs dans `BaseModelEndpoint`.
-- Simplification du client VLM et renommage d'`OllamaWrapper` en `OllamaVLM`.
+- Simplification du client VLM et utilisation d'`OllamaVLM`.
 - Déplacement de la lecture des photos et de l'enregistrement des annotations dans la couche `Storage` / `PostgresStorage`.
 - Exécution des accès PostgreSQL de l'analyse dans des threads via `asyncio.to_thread()` pour libérer la boucle asynchrone. Les zones restent analysées successivement.
 - Mise à jour de `.env.example`, du point d'entrée Docker, du README et du contrôle d'import dans la CI.
 
-Travail restant :
-
-- **US-5.1 : Accepter une dégradation.**
-- **US-5.2 : Modifier son type ou sa gravité.**
-- **US-5.3 : Ignorer un faux positif.**
-- **US-5.4 : Ajouter une remarque.**
-- **US-5.5 : Enregistrer la décision du gestionnaire.**
-- **US-6.4 : Distinguer résultat IA et validation humaine.**
-- **US-8.7 : Valider les anomalies.**
-- **US-8.9 : Vérifier tout le scénario avec un test.**
-- **US-9.8 : Ajouter des captures ou une démonstration.**
-- **US-9.9 : Mettre à jour la documentation après l'intégration** — des mises à jour sont présentes dans les commits, mais la case reste décochée dans l'export Trello. La revue finale reste à confirmer.
-
-Les US parentes 6, 8 et 9 restent donc en cours. US-11 « Voir un matériel » reste
-à faire dans l'export et ne contient pas de checklist à numéroter.
+Le sprint a depuis été complété par l'intégration des décisions humaines et de
+la consultation détaillée d'un matériel. Les fonctionnalités sont désormais
+disponibles dans l'interface : accepter, modifier ou ignorer une anomalie,
+ajouter une remarque et enregistrer la décision associée à un rapport.
 
 Limites constatées :
 
-- Les images annotées remplacent actuellement les photos de restitution en base ; les originaux ne sont pas conservés séparément.
-- L'affichage des images n'est pas rafraîchi automatiquement après l'analyse : il faut rouvrir la page pour charger les annotations.
-- Le contrôle JSON utilise une borne fixe de 1024 ; le dessin borne ensuite les coordonnées aux dimensions réelles de l'image.
-- La qualité de détection et le parcours complet avec PostgreSQL, Ollama et des photos réelles restent à valider.
+- Les photos annotées sont stockées dans `image_annotee`, sans modifier les
+  octets de la photo originale.
+- Les images annotées sont rechargées après l'analyse dans le parcours Gradio.
+- La validation des coordonnées utilise les dimensions réelles de l'image
+  après préparation par Pillow.
+- La qualité de détection dépend encore du modèle VLM et de la qualité des
+  photos fournies.
 
 Livrables / DoR & DoD :
 
@@ -86,7 +78,8 @@ Livrables / DoR & DoD :
 
 Tests et critères d'acceptation :
 
-- Vérification locale effectuée : `venv/bin/python -m unittest discover -s tests` — **28 tests réussis**.
+- La suite contient 28 tests découverts. L'exécution complète nécessite les
+  dépendances de `requirements.txt`, notamment `psycopg`.
 - Les tests utilisent des échanges HTTP et des accès au stockage simulés ; ils ne valident pas le déploiement complet ni la qualité du modèle.
 - Les tests couvrent notamment le refus des JSON invalides et des bbox hors limites, l'ordre avant/après des images, les erreurs HTTP et les timeouts, la fermeture du client, l'association des photos par zone et l'enregistrement des annotations.
 - Les accès au stockage de l'analyse sont vérifiés hors de la boucle asynchrone.

@@ -9,6 +9,15 @@ nouvelles : rayure, tâche, déformation, casse, etc.
 
 Le suivi des tâches et des user stories est disponible sur le [tableau Trello](https://trello.com/b/3we9QZwI/sae-ia).
 
+## Documentation du Projet (Référentiel Qualité R5-08A)
+
+La documentation complète du projet est rédigée selon le cours **R5-08A – Qualité de Développement** (IUTLCO Informatique) :
+
+- 📚 [**Portail & Sommaire Documentaire**](docs/README.md)
+- 🎯 [**Qualité Logicielle (ISO/IEC 25010) & Inspections (TDD / BDD Gherkin)**](docs/qualite_developpement.md)
+- ⚙️ [**Documentation Technique (Architecture, Modélisation, Build & Déploiement)**](docs/documentation_technique.md)
+- 📖 [**Documentation Utilisateur (Manuel pas à pas, Tutoriel 5 min & FAQ)**](docs/documentation_utilisateur.md)
+
 ## Objectif
 
 Pour chaque zone de l'ordinateur (par exemple l'écran ou le clavier), le système :
@@ -102,9 +111,10 @@ Chaque sauvegarde crée une version dans l'historique, avec sa date et son
 origine (`ia` ou `humain`), afin de conserver le texte automatique et les
 corrections successives.
 
-Actuellement, les annotations remplacent les photos après dans la base.
-Les images affichées sont rechargées automatiquement à la fin de l'analyse :
-les boîtes englobantes apparaissent directement sur les photos après.
+Les annotations sont enregistrées dans la colonne `image_annotee` sans
+remplacer les photos après originales. Les images affichées sont rechargées
+automatiquement à la fin de l'analyse : les boîtes englobantes apparaissent
+directement sur les photos après.
 
 ## Prompt et validation
 
@@ -121,8 +131,8 @@ Les gravités acceptées sont `aucune`, `legere`, `marquee` et `importante`.
 Une réponse invalide produit un message d'erreur pour la zone.
 
 Le contrôle des boîtes englobantes vérifie quatre coordonnées numériques,
-finies, non négatives et ordonnées. Leur appartenance aux dimensions réelles
-de l'image n'est pas encore vérifiée.
+finies, non négatives, ordonnées et comprises dans les dimensions réelles de
+l'image analysée.
 
 La validation humaine propose trois décisions exclusives : accepter une
 dégradation, modifier son type ou sa gravité, ou ignorer un faux positif.

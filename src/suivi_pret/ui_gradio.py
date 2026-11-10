@@ -961,24 +961,24 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             elem_classes="ligne-ordinateur",
                             key=f"materiel-{identifiant}",
                         ):
-                            gr.Markdown(echapper(materiel["nom"]), elem_classes="colonne-nom")
-                            gr.Markdown(echapper(materiel["etat"]), elem_classes="colonne-etat")
-                            gr.Markdown(echapper(materiel["localisation"]), elem_classes="colonne-localisation")
+                            gr.Markdown(echapper(materiel["nom"]), scale=3)
+                            gr.Markdown(echapper(materiel["etat"]), scale=2)
+                            gr.Markdown(echapper(materiel["localisation"]), scale=2)
 
                             bouton_voir = gr.Button(
                                 "Voir", elem_classes="colonne-action",
                                 key=f"voir-{identifiant}",
                             )
                             bouton_modifier = gr.Button(
-                                "Modifier", elem_classes="colonne-action",
+                                "Modifier", scale=1,
                                 key=f"modifier-{identifiant}",
                             )
                             bouton_supprimer = gr.Button(
-                                "Supprimer", elem_classes="colonne-action",
+                                "Supprimer", scale=1,
                                 key=f"supprimer-{identifiant}",
                             )
                             bouton_analyse = gr.Button(
-                                "Analyse", elem_classes="colonne-action",
+                                "Analyse", scale=1,
                                 key=f"analyse-{identifiant}",
                             )
 
