@@ -1,12 +1,15 @@
 """Interface Gradio de gestion des matériels."""
 
 import html
+import asyncio
 import logging
 from io import BytesIO
+from pathlib import Path
 
 import gradio as gr
 from PIL import Image
 
+from .ollama_client.ia_comparaison import analyser_materiel
 from .service import SuiviPretService
 from .storage import (
     DuplicateMaterielError,
@@ -82,6 +85,31 @@ TYPES_PHOTOS = (
     "connectique_droite",
 )
 
+EXEMPLES_PHOTOS = {
+    "dessus": Path(__file__).resolve().parents[2] / "img" / "capot.jpg",
+    "dessous": Path(__file__).resolve().parents[2] / "img" / "dessous.jpg",
+    "ecran": Path(__file__).resolve().parents[2] / "img" / "ecran.jpg",
+    "clavier": Path(__file__).resolve().parents[2] / "img" / "clavier.jpg",
+    "connectique_gauche": Path(__file__).resolve().parents[2] / "img" / "gauche.jpg",
+    "connectique_droite": Path(__file__).resolve().parents[2] / "img" / "droite.jpg",
+}
+
+
+def creer_champ_photo(label_photo):
+    """Affiche un exemple à côté d'un champ de téléversement de photo."""
+    with gr.Row(elem_classes="ligne-photo"):
+        gr.Image(
+            value=str(EXEMPLES_PHOTOS[label_photo]),
+            label=f"Exemple - {label_photo}",
+            interactive=False,
+            buttons=[],
+            elem_classes="photo-exemple",
+        )
+        return gr.Image(
+            label=f"Photo {label_photo} de l'ordinateur",
+            type="filepath",
+        )
+
 
 def ajouter_photos_analyse(id_materiel, *photos):
     """Valide et enregistre les six nouvelles photos pour comparaison."""
@@ -105,16 +133,155 @@ def ajouter_photos_analyse(id_materiel, *photos):
         raise gr.Error(str(exc)) from exc
 
     gr.Info("Photos d'analyse enregistrées.")
-    return "✅ Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
+    return " Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
+
+
+async def lancer_analyse(id_materiel, *photos):
+    """Compare les photos puis recharge immédiatement les images annotées."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+
+    try:
+        rapport = await analyser_materiel(id_materiel, storage=service.storage)
+        photos_analyse = await asyncio.to_thread(
+            service.recuperer_photos_analyse, id_materiel,
+        )
+        return rapport, rapport, *photos_en_data_uri(photos_analyse)
+    except Exception as exc:
+        logger.exception("Erreur lors de l'analyse du matériel %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+
+def sauvegarder_rapport(id_materiel, rapport, rapport_original=None):
+    """Sauvegarde le texte affiché, éventuellement corrigé par le gestionnaire."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+    if not rapport or rapport.startswith("Aucun rapport enregistré"):
+        gr.Warning("Lancez une analyse avant de sauvegarder un rapport.")
+        return "Aucun rapport à sauvegarder.", gr.update()
+
+    try:
+        origine = "humain" if rapport != rapport_original else "ia"
+        rapport_id = service.enregistrer_rapport(id_materiel, rapport, origine)
+        historique = afficher_liste_rapports(id_materiel)
+    except StorageError as exc:
+        logger.exception("Erreur lors de l'enregistrement du rapport %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    gr.Info("Rapport sauvegardé.")
+    return (
+        "Rapport sauvegardé dans l'historique.",
+        historique,
+    )
+
+
+def afficher_liste_rapports(id_materiel):
+    """Affiche l'historique des rapports du matériel sélectionné."""
+    if id_materiel is None:
+        raise gr.Error("Aucun ordinateur n'est sélectionné.")
+
+    try:
+        rapports = service.lister_rapports(id_materiel)
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des rapports %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    if not rapports:
+        return "Aucun rapport sauvegardé pour cet ordinateur."
+
+    try:
+        validations = service.lister_validations_humaines(id_materiel)
+    except StorageError:
+        logger.exception(
+            "Erreur lors du chargement des validations %s", id_materiel,
+        )
+        validations = []
+        erreur_validations = (
+            "> Les validations humaines ne sont pas disponibles pour le moment."
+        )
+    else:
+        erreur_validations = None
+
+    validations_par_rapport = {}
+    for validation in validations:
+        validations_par_rapport.setdefault(validation["id_rapport"], []).append(validation)
+
+    blocs_rapports = []
+    for rapport in rapports:
+        rapport_id = rapport["id_rapport"]
+        date = rapport["cree_le"].strftime("%d/%m/%Y %H:%M")
+        validations_rapport = validations_par_rapport.get(rapport_id, [])
+        contenu_rapport = (
+            f"#### Rapport du {date} (identifiant : {rapport_id}, "
+            f"origine : {rapport.get('origine', 'ia')})\n\n"
+            f"{rapport['contenu']}"
+        )
+        if validations_rapport:
+            contenu_rapport += (
+                "\n**Décision(s) du gestionnaire pour ce rapport :**"
+            )
+        bloc = [contenu_rapport]
+
+        if validations_rapport:
+            for validation in validations_rapport:
+                date_validation = validation["cree_le"].strftime("%d/%m/%Y %H:%M")
+                remarque = validation["remarque"] or "Aucune remarque"
+                bloc.append(
+                    f"- **{date_validation}** — {validation['decision']} "
+                    f"(type : {validation['type_anomalie'] or 'inchangé'}, "
+                    f"gravité : {validation['gravite'] or 'inchangée'}) — {remarque}"
+                )
+        elif erreur_validations:
+            bloc.append(erreur_validations)
+        elif rapport.get("origine") == "humain":
+            bloc.append("_Rapport modifié et enregistré par un humain._")
+        else:
+            bloc.append("_Aucune décision humaine enregistrée pour ce rapport._")
+
+        blocs_rapports.append("\n".join(bloc))
+
+    return "\n\n---\n\n".join(blocs_rapports)
+
+
+def construire_choix_rapports(id_materiel):
+    """Construit les choix de rapports utilisables pour une validation."""
+    rapports = service.lister_rapports(id_materiel)
+    return [
+        (
+            f"Rapport du {rapport['cree_le'].strftime('%d/%m/%Y %H:%M')} "
+            f"(#{rapport['id_rapport']})",
+            rapport["id_rapport"],
+        )
+        for rapport in rapports
+    ]
+
+
+def charger_rapport_selectionne(rapport_id, id_materiel):
+    """Affiche le contenu du rapport choisi pour la validation humaine."""
+    if rapport_id is None or id_materiel is None:
+        return ""
+    rapports = service.lister_rapports(id_materiel)
+    for rapport in rapports:
+        if rapport["id_rapport"] == int(rapport_id):
+            return rapport["contenu"]
+    raise gr.Error("Le rapport sélectionné n'existe plus.")
 
 
 def photos_en_data_uri(photos):
     """Convertit les photos enregistrées en images affichables par Gradio."""
     photos_par_type = {}
-    for photo in photos:
-        with Image.open(BytesIO(photo["image_data"])) as image:
-            image.thumbnail((1024, 1024))
-            photos_par_type[photo["type_photo"]] = image.copy()
+    for photo in photos or []:
+        image_data = photo.get("image_data")
+        type_photo = photo.get("type_photo")
+        if image_data is None or type_photo is None:
+            continue
+        try:
+            with Image.open(BytesIO(image_data)) as image:
+                image.thumbnail((1024, 1024))
+                photos_par_type[type_photo] = image.copy()
+        except Exception:
+            logger.warning("Photo invalide ignorée pour le type '%s'", type_photo)
+            continue
     return tuple(photos_par_type.get(type_photo) for type_photo in TYPES_PHOTOS)
 
 
@@ -124,6 +291,10 @@ def ouvrir_analyse(id_materiel, nom):
         anciennes_photos = photos_en_data_uri(
             service.recuperer_photos(id_materiel)
         )
+        photos_analyse = photos_en_data_uri(
+            service.recuperer_photos_analyse(id_materiel)
+        )
+        rapports = service.lister_rapports(id_materiel)
     except StorageError as exc:
         logger.exception("Erreur lors du chargement des photos du matériel %s", id_materiel)
         raise gr.Error(str(exc)) from exc
@@ -132,11 +303,14 @@ def ouvrir_analyse(id_materiel, nom):
         gr.update(visible=False),
         gr.update(visible=True),
         id_materiel,
+        rapports[0]["contenu"] if rapports else "",
         gr.update(value=f"## Analyse de l'ordinateur : {echapper(nom)}"),
         *anciennes_photos,
-        *vider_photos_analyse(),
+        *photos_analyse,
         "",
-        "",  # zone réponse IA
+        rapports[0]["contenu"] if rapports else "",
+        rapports[0]["contenu"] if rapports else "",
+        "",
     )
 
 
@@ -146,11 +320,14 @@ def retour_liste_depuis_analyse():
         gr.update(visible=True),
         gr.update(visible=False),
         None,
+        "",
         gr.update(value="## Analyse de l'ordinateur"),
         *([None] * 6),
         *vider_photos_analyse(),
         "",
         "",  # zone réponse IA
+        "",  # copie originale de la réponse IA
+        "",  # statut sauvegarde
     )
 
 
@@ -163,11 +340,69 @@ def retour_accueil():
 
 
 def ouvrir_formulaire():
-    return (gr.update(visible=False), gr.update(visible=True), *vider_formulaire())
+    champs = list(vider_formulaire())
+    champs[8] = gr.update(choices=construire_choix_entites(), value=None)
+    return (gr.update(visible=False), gr.update(visible=True), *champs)
+
+
+def construire_choix_entites():
+    """Affiche les noms tout en transmettant les identifiants au service."""
+    try:
+        entites = service.lister_entites()
+    except StorageError as exc:
+        logger.exception("Erreur lors du chargement des entités")
+        raise gr.Error(str(exc)) from exc
+    if not entites:
+        gr.Warning("Aucune entité disponible. Ajoutez une entité en base avant d'enregistrer un matériel.")
+    return [(entite["nom"], entite["id"]) for entite in entites]
 
 
 def annuler_formulaire():
     return (gr.update(visible=True), gr.update(visible=False), *vider_formulaire())
+
+
+CHAMPS_CONSULTATION = (
+    ("id_materiel", "Identifiant du matériel"),
+    ("nom", "Nom"),
+    ("modele", "Modèle"),
+    ("annee", "Année"),
+    ("etiquette_ulco", "Étiquette ULCO"),
+    ("etat", "État"),
+    ("localisation", "Localisation"),
+    ("descriptif", "Descriptif"),
+    ("remarque", "Remarque"),
+    ("entite_nom", "Entité"),
+)
+
+
+def ouvrir_consultation(id_materiel):
+    """Charge la fiche et les photos de référence sans modifier le matériel."""
+    try:
+        materiel = service.recuperer_materiel(id_materiel)
+        if materiel is None:
+            raise gr.Error("Matériel introuvable.")
+        photos = photos_en_data_uri(service.recuperer_photos(id_materiel))
+    except StorageError as exc:
+        logger.exception("Erreur lors de la consultation du matériel %s", id_materiel)
+        raise gr.Error(str(exc)) from exc
+
+    return (
+        gr.update(visible=False),
+        gr.update(visible=True),
+        *("" if materiel[cle] is None else str(materiel[cle])
+          for cle, _ in CHAMPS_CONSULTATION),
+        *photos,
+    )
+
+
+def retour_liste_depuis_consultation():
+    """Ferme et vide la fiche consultée."""
+    return (
+        gr.update(visible=True),
+        gr.update(visible=False),
+        *([""] * len(CHAMPS_CONSULTATION)),
+        *([None] * len(TYPES_PHOTOS)),
+    )
 
 
 def enregistrer_materiel(
@@ -183,7 +418,7 @@ def enregistrer_materiel(
     if not (localisation or "").strip():
         erreurs.append("la localisation")
     if entite_id is None:
-        erreurs.append("l'identifiant de l'entité")
+        erreurs.append("l'entité")
     if erreurs:
         gr.Warning(f"Champs obligatoires manquants : {', '.join(erreurs)}.")
         return (gr.update(), gr.update(), version, *([gr.update()] * 15))
@@ -233,7 +468,7 @@ def ouvrir_modification(id_materiel, nom_materiel):
         materiel["localisation"] or "",
         materiel["descriptif"] or "",
         materiel["remarque"] or "",
-        materiel["entite_id"],
+        gr.update(choices=construire_choix_entites(), value=materiel["entite_id"]),
         None, None, None, None, None, None,
     )
 
@@ -256,7 +491,7 @@ def enregistrer_modification(
     if not (localisation or "").strip():
         erreurs.append("la localisation")
     if entite_id is None:
-        erreurs.append("l'identifiant de l'entité")
+        erreurs.append("l'entité")
     if erreurs:
         gr.Warning(f"Champs obligatoires manquants : {', '.join(erreurs)}.")
         return (gr.update(), gr.update(), version, *([gr.update()] * 16))
@@ -312,6 +547,74 @@ CSS = """
     object-fit: contain !important;
 }
 
+#page .photo-exemple img {
+    max-height: 180px !important;
+}
+
+.grille-photos {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.grille-photos > .gradio-column {
+    min-width: 0;
+}
+
+.ligne-photo {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px;
+}
+
+.ligne-photo > .gradio-image {
+    min-width: 0;
+}
+
+.ligne-photo .image-container,
+.ligne-analyse .image-container {
+    width: 100% !important;
+}
+
+.ligne-analyse {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+}
+
+.entetes-analyse {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.entetes-analyse > * {
+    min-width: 0;
+}
+
+.ligne-analyse > .gradio-image {
+    min-width: 0;
+}
+
+.fiche-materiel .titre-fiche,
+.fiche-materiel label,
+.fiche-materiel input,
+.fiche-materiel textarea {
+    text-align: center;
+}
+
+.fiche-materiel .actions-fiche {
+    justify-content: space-around;
+    border-top: 1px solid #d0d0d0;
+    padding-top: 16px;
+}
+
+.fiche-materiel .actions-fiche button {
+    max-width: 280px;
+}
+
 #titre {
     text-align: center;
     margin-bottom: 25px;
@@ -319,8 +622,9 @@ CSS = """
 
 #liste {
     margin-top: 24px;
-    padding: 13px 25px;
+    padding: 13px clamp(10px, 3vw, 25px);
     background: #dddddd;
+    overflow: hidden;
 }
 
 .ligne-ordinateur {
@@ -345,6 +649,22 @@ CSS = """
     margin: 0 !important;
 }
 
+#liste .entetes-ordinateurs,
+#liste .ligne-ordinateur {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) repeat(2, minmax(0, 2fr)) repeat(4, minmax(0, 1fr));
+}
+
+#liste .entetes-ordinateurs > *,
+#liste .ligne-ordinateur > * {
+    min-width: 0;
+}
+
+#liste .entetes-ordinateurs p,
+#liste .ligne-ordinateur p {
+    text-align: center;
+}
+
 .ligne-ordinateur p {
     color: white !important;
     font-size: 13px;
@@ -363,12 +683,130 @@ CSS = """
     background: #4d4d4d !important;
 }
 
+.page-liste-actions {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.page-liste-actions > * {
+    min-width: 0;
+}
+
 #zone-ia {
     margin-top: 16px;
     border: 1px solid #d0d0d0;
     border-radius: 8px;
     padding: 12px;
     background: #f8f8f8;
+}
+
+@media (max-width: 900px) {
+    #page {
+        padding: 24px 5%;
+    }
+
+    .ligne-analyse {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entetes-analyse {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .page-liste-actions {
+        flex-wrap: wrap;
+    }
+
+    .page-liste-actions > .spacer {
+        display: none;
+    }
+
+    #liste .entetes-ordinateurs {
+        display: none;
+    }
+
+    #liste .ligne-ordinateur {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 8px;
+        margin-bottom: 12px;
+        padding: 10px;
+        border-radius: 6px;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) {
+        grid-column: 1 / -1;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) p {
+        text-align: left;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(1)::before,
+    #liste .ligne-ordinateur > *:nth-child(2)::before,
+    #liste .ligne-ordinateur > *:nth-child(3)::before {
+        display: block;
+        margin-bottom: 2px;
+        color: #d7d7d7;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(1)::before {
+        content: "Nom";
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(2)::before {
+        content: "État";
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(3)::before {
+        content: "Localisation";
+    }
+
+    #liste .ligne-ordinateur button {
+        width: 100%;
+        padding: 6px 4px !important;
+        white-space: normal !important;
+    }
+}
+
+@media (max-width: 600px) {
+    #page {
+        padding: 16px 3%;
+    }
+
+    .grille-photos,
+    .ligne-photo,
+    .ligne-analyse {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .entetes-analyse {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .page-liste-actions {
+        gap: 8px;
+    }
+
+    .page-liste-actions > button {
+        flex: 1 1 140px;
+    }
+
+    #liste {
+        margin-top: 14px;
+        padding: 10px;
+    }
+
+    #liste .ligne-ordinateur {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 8px;
+    }
+
+    #liste .ligne-ordinateur > *:nth-child(-n + 3) {
+        overflow-wrap: anywhere;
+    }
 }
 """
 
@@ -377,6 +815,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
     actualisation = gr.State(0)
     analyse_id_materiel = gr.State(None)
+    rapport_ia_original = gr.State("")
 
     with gr.Column(elem_id="page"):
 
@@ -391,7 +830,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         with gr.Column(visible=False) as page_analyse:
             titre_analyse = gr.Markdown("## Analyse de l'ordinateur")
 
-            with gr.Row():
+            with gr.Row(elem_classes="entetes-analyse"):
+                gr.Markdown("### Exemple")
                 gr.Markdown("### Photo avant")
                 gr.Markdown("### Nouvelle photo")
 
@@ -402,7 +842,14 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 "clavier", "connectique gauche", "connectique droite",
             )
             for label_photo in labels_photos:
-                with gr.Row():
+                with gr.Row(elem_classes="ligne-analyse"):
+                    gr.Image(
+                        value=str(EXEMPLES_PHOTOS[label_photo.replace(" ", "_")]),
+                        label=f"Exemple - {label_photo}",
+                        interactive=False,
+                        buttons=[],
+                        elem_classes="photo-exemple",
+                    )
                     anciennes_images.append(
                         gr.Image(label=f"Photo avant - {label_photo}", interactive=False)
                     )
@@ -414,6 +861,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
             with gr.Row():
                 bouton_ajouter_photos = gr.Button("Ajouter les photos", variant="primary")
+                bouton_lancer_analyse = gr.Button("Lancer l'analyse", variant="primary")
+                bouton_liste_rapports = gr.Button("Liste des rapports")
                 bouton_retour_analyse = gr.Button("Retour à la liste")
 
             # Zone de réponse de l'IA
@@ -421,18 +870,65 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 gr.Markdown("### 🤖 Réponse de l'IA")
                 reponse_ia = gr.Textbox(
                     label="Analyse comparative",
-                    interactive=False,
+                    interactive=True,
                     lines=6,
                     placeholder="La réponse de l'IA apparaîtra ici après l'analyse des photos avant/après...",
                 )
+                liste_rapports = gr.Markdown()
+
+                gr.Markdown(
+                    "### Validation humaine\n"
+                    "Modifiez directement la réponse ci-dessus si nécessaire, "
+                    "puis enregistrez-la. Le texte original de l'IA est conservé "
+                    "pour distinguer les deux versions."
+                )
+                bouton_enregistrer_validation = gr.Button(
+                    "Enregistrer le rapport",
+                    variant="primary",
+                )
+                statut_validation = gr.Markdown()
+
+        # ── Fiche en lecture seule ───────────────────────────────────────────
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_consultation:
+            gr.Markdown("## Consulter un ordinateur", elem_classes="titre-fiche")
+            gr.Markdown("Lecture seule", elem_classes="titre-fiche")
+            champs_par_cle = {}
+            labels_consultation = dict(CHAMPS_CONSULTATION)
+            for cles in (
+                ("nom", "modele", "annee"),
+                ("localisation", "etiquette_ulco", "etat"),
+                ("id_materiel", "entite_nom"),
+            ):
+                with gr.Row():
+                    for cle in cles:
+                        champs_par_cle[cle] = gr.Textbox(
+                            label=labels_consultation[cle], interactive=False,
+                        )
+            for cle in ("remarque", "descriptif"):
+                champs_par_cle[cle] = gr.Textbox(
+                    label=labels_consultation[cle], interactive=False, lines=3,
+                )
+            champs_consultation = [champs_par_cle[cle] for cle, _ in CHAMPS_CONSULTATION]
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            photos_consultation = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row():
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        photos_consultation.append(gr.Image(
+                            label=f"Photo {type_photo.replace('_', ' ')}",
+                            interactive=False,
+                            buttons=[],
+                        ))
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_retour_consultation = gr.Button("Retour à la liste")
 
         # ── Page de liste ────────────────────────────────────────────────────
         with gr.Column(visible=False) as page_liste:
             gr.Markdown("## Liste des ordinateurs", elem_id="titre")
 
-            with gr.Row():
+            with gr.Row(elem_classes="page-liste-actions"):
                 bouton_ajouter = gr.Button("Ajouter un ordinateur")
-                gr.Column(scale=3)
+                gr.Column(elem_classes="spacer", scale=3)
                 bouton_retour_accueil = gr.Button("Accueil")
 
             @gr.render(inputs=actualisation)
@@ -441,10 +937,13 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
                 with gr.Column(elem_id="liste"):
                     with gr.Row(elem_classes="entetes-ordinateurs"):
-                        gr.Markdown("Nom", scale=3)
-                        gr.Markdown("État", scale=2)
-                        gr.Markdown("Localisation", scale=2)
-                        gr.Markdown("Actions", scale=3)
+                        gr.Markdown("Nom", elem_classes="colonne-nom")
+                        gr.Markdown("État", elem_classes="colonne-etat")
+                        gr.Markdown("Localisation", elem_classes="colonne-localisation")
+                        gr.Markdown("Voir", elem_classes="colonne-action")
+                        gr.Markdown("Modifier", elem_classes="colonne-action")
+                        gr.Markdown("Supprimer", elem_classes="colonne-action")
+                        gr.Markdown("Analyse", elem_classes="colonne-action")
 
                     if not materiels:
                         gr.Markdown(
@@ -466,6 +965,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             gr.Markdown(echapper(materiel["etat"]), scale=2)
                             gr.Markdown(echapper(materiel["localisation"]), scale=2)
 
+                            bouton_voir = gr.Button(
+                                "Voir", elem_classes="colonne-action",
+                                key=f"voir-{identifiant}",
+                            )
                             bouton_modifier = gr.Button(
                                 "Modifier", scale=1,
                                 key=f"modifier-{identifiant}",
@@ -479,14 +982,25 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                 key=f"analyse-{identifiant}",
                             )
 
+                            bouton_voir.click(
+                                fn=lambda id_m=identifiant: ouvrir_consultation(id_m),
+                                inputs=None,
+                                outputs=[
+                                    page_liste, page_consultation,
+                                    *champs_consultation, *photos_consultation,
+                                ],
+                            )
+
                             bouton_analyse.click(
                                 fn=lambda id_m=identifiant, n=materiel["nom"]: ouvrir_analyse(id_m, n),
                                 inputs=None,
                                 outputs=[
                                     page_liste, page_analyse,
-                                    analyse_id_materiel, titre_analyse,
+                                    analyse_id_materiel, rapport_ia_original, titre_analyse,
                                     *anciennes_images, *nouvelles_images,
                                     statut_photos_analyse, reponse_ia,
+                                    liste_rapports,
+                                    statut_validation,
                                 ],
                             )
 
@@ -526,56 +1040,65 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             )
 
         # ── Page formulaire ajout ────────────────────────────────────────────
-        with gr.Column(visible=False) as page_formulaire:
-            gr.Markdown("## Ajouter un ordinateur")
-
-            nom = gr.Textbox(label="Nom *")
-            modele = gr.Textbox(label="Modèle")
-            annee = gr.Number(label="Année", precision=0)
-            etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
-            etat = gr.Dropdown(ETATS, value="OK", label="État *")
-            localisation = gr.Textbox(label="Localisation *")
-            descriptif = gr.Textbox(label="Descriptif", lines=3)
-            remarque = gr.Textbox(label="Remarque", lines=3)
-            entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
-
-            image = gr.Image(label="Photo dessus de l'ordinateur", type="filepath")
-            image2 = gr.Image(label="Photo dessous de l'ordinateur", type="filepath")
-            image3 = gr.Image(label="Photo ecran de l'ordinateur", type="filepath")
-            image4 = gr.Image(label="Photo clavier de l'ordinateur", type="filepath")
-            image5 = gr.Image(label="Photo connectique gauche de l'ordinateur", type="filepath")
-            image6 = gr.Image(label="Photo connectique droite de l'ordinateur", type="filepath")
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_formulaire:
+            gr.Markdown("## Ajouter un ordinateur", elem_classes="titre-fiche")
 
             with gr.Row():
-                bouton_enregistrer = gr.Button("Enregistrer", variant="primary")
-                bouton_annuler = gr.Button("Annuler")
+                nom = gr.Textbox(label="Nom *")
+                modele = gr.Textbox(label="Modèle")
+                annee = gr.Number(label="Année", precision=0)
+            with gr.Row():
+                localisation = gr.Textbox(label="Localisation *")
+                etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
+                etat = gr.Dropdown(ETATS, value="OK", label="État *")
+            entite_id = gr.Dropdown(choices=[], label="Entité *", interactive=True)
+            remarque = gr.Textbox(label="Remarque", lines=3)
+            descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
+
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            photos_ajout = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row(elem_classes="grille-photos"):
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        with gr.Column():
+                            photos_ajout.append(creer_champ_photo(type_photo))
+            image, image2, image3, image4, image5, image6 = photos_ajout
+
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_annuler = gr.Button("Annuler", variant="stop")
+                bouton_enregistrer = gr.Button("Ajouter le matériel", variant="primary")
 
         # ── Page formulaire modification ─────────────────────────────────────
-        with gr.Column(visible=False) as page_modification:
-            gr.Markdown("## Modifier un ordinateur")
+        with gr.Column(visible=False, elem_classes="fiche-materiel") as page_modification:
+            gr.Markdown("## Modifier un ordinateur", elem_classes="titre-fiche")
 
             modif_id = gr.State(None)
-            modif_nom = gr.Textbox(label="Nom *")
-            modif_modele = gr.Textbox(label="Modèle")
-            modif_annee = gr.Number(label="Année", precision=0)
-            modif_etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
-            modif_etat = gr.Dropdown(ETATS, value="OK", label="État *")
-            modif_localisation = gr.Textbox(label="Localisation *")
-            modif_descriptif = gr.Textbox(label="Descriptif", lines=3)
-            modif_remarque = gr.Textbox(label="Remarque", lines=3)
-            modif_entite_id = gr.Number(label="Identifiant de l'entité *", precision=0)
-
-            gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
-            modif_image = gr.Image(label="Photo dessus de l'ordinateur", type="filepath")
-            modif_image2 = gr.Image(label="Photo dessous de l'ordinateur", type="filepath")
-            modif_image3 = gr.Image(label="Photo ecran de l'ordinateur", type="filepath")
-            modif_image4 = gr.Image(label="Photo clavier de l'ordinateur", type="filepath")
-            modif_image5 = gr.Image(label="Photo connectique gauche de l'ordinateur", type="filepath")
-            modif_image6 = gr.Image(label="Photo connectique droite de l'ordinateur", type="filepath")
-
             with gr.Row():
+                modif_nom = gr.Textbox(label="Nom *")
+                modif_modele = gr.Textbox(label="Modèle")
+                modif_annee = gr.Number(label="Année", precision=0)
+            with gr.Row():
+                modif_localisation = gr.Textbox(label="Localisation *")
+                modif_etiquette_ulco = gr.Textbox(label="Étiquette ULCO")
+                modif_etat = gr.Dropdown(ETATS, value="OK", label="État *")
+            modif_entite_id = gr.Dropdown(choices=[], label="Entité *", interactive=True)
+            modif_remarque = gr.Textbox(label="Remarque", lines=3)
+            modif_descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
+
+            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
+            photos_modification = []
+            for debut in range(0, len(TYPES_PHOTOS), 2):
+                with gr.Row(elem_classes="grille-photos"):
+                    for type_photo in TYPES_PHOTOS[debut:debut + 2]:
+                        with gr.Column():
+                            photos_modification.append(creer_champ_photo(type_photo))
+            (modif_image, modif_image2, modif_image3,
+             modif_image4, modif_image5, modif_image6) = photos_modification
+
+            with gr.Row(elem_classes="actions-fiche"):
+                bouton_annuler_modif = gr.Button("Annuler", variant="stop")
                 bouton_enregistrer_modif = gr.Button("Enregistrer les modifications", variant="primary")
-                bouton_annuler_modif = gr.Button("Annuler")
 
 
     # ── Câblage des événements ───────────────────────────────────────────────
@@ -599,15 +1122,25 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     # Liste -> accueil
     bouton_retour_accueil.click(fn=retour_accueil, inputs=None, outputs=[page_accueil, page_liste])
 
+    # Consultation -> liste
+    bouton_retour_consultation.click(
+        fn=retour_liste_depuis_consultation,
+        inputs=None,
+        outputs=[
+            page_liste, page_consultation,
+            *champs_consultation, *photos_consultation,
+        ],
+    )
+
     # Analyse -> liste sans sauvegarde
     bouton_retour_analyse.click(
         fn=retour_liste_depuis_analyse,
         inputs=None,
         outputs=[
             page_liste, page_analyse,
-            analyse_id_materiel, titre_analyse,
+            analyse_id_materiel, rapport_ia_original, titre_analyse,
             *anciennes_images, *nouvelles_images,
-            statut_photos_analyse, reponse_ia,
+            statut_photos_analyse, reponse_ia, liste_rapports, statut_validation,
         ],
     )
 
@@ -615,6 +1148,24 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         fn=ajouter_photos_analyse,
         inputs=[analyse_id_materiel, *nouvelles_images],
         outputs=[statut_photos_analyse],
+    )
+
+    bouton_lancer_analyse.click(
+        fn=lancer_analyse,
+        inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
+        outputs=[reponse_ia, rapport_ia_original, *nouvelles_images],
+    )
+
+    bouton_enregistrer_validation.click(
+        fn=sauvegarder_rapport,
+        inputs=[analyse_id_materiel, reponse_ia, rapport_ia_original],
+        outputs=[statut_validation, liste_rapports],
+    )
+
+    bouton_liste_rapports.click(
+        fn=afficher_liste_rapports,
+        inputs=[analyse_id_materiel],
+        outputs=[liste_rapports],
     )
 
     # Liste -> formulaire ajout
@@ -653,12 +1204,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
     )
 
 
-demo.launch(
-    # Dans Docker, l'application doit écouter sur toutes les interfaces pour
-    # que le port publié par Compose soit accessible depuis la machine hôte.
-    server_name="0.0.0.0",
-    server_port=7860,
-    theme=gr.Theme.from_hub("harsh8001/skymist"),
-    css=CSS,
-    show_error=False,
-)
+def lancer_application():
+    """Point d'entrée appelé par le conteneur Docker."""
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        theme=gr.Theme.from_hub("harsh8001/skymist"),
+        css=CSS,
+        show_error=False,
+    )

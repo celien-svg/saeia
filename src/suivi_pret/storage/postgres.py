@@ -34,6 +34,14 @@ class PostgresStorage(Storage):
             row_factory=dict_row,
         )
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute("SELECT id, nom FROM entites ORDER BY nom, id")
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les entités.") from exc
+
     def lister_materiels(self) -> list[dict[str, Any]]:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
@@ -52,10 +60,12 @@ class PostgresStorage(Storage):
         try:
             with self._connexion() as conn, conn.cursor() as cur:
                 cur.execute(
-                    """SELECT id_materiel, nom, modele, annee, etiquette_ulco,
-                              etat, localisation, descriptif, remarque, entite_id
-                       FROM materiels
-                       WHERE id_materiel = %s""",
+                    """SELECT m.id_materiel, m.nom, m.modele, m.annee, m.etiquette_ulco,
+                              m.etat, m.localisation, m.descriptif, m.remarque,
+                              m.entite_id, e.nom AS entite_nom
+                       FROM materiels m
+                       JOIN entites e ON e.id = m.entite_id
+                       WHERE m.id_materiel = %s""",
                     (materiel_id,),
                 )
                 return cur.fetchone()
@@ -75,6 +85,135 @@ class PostgresStorage(Storage):
                 return cur.fetchall()
         except psycopg.Error as exc:
             raise StorageError("Impossible de récupérer les photos.") from exc
+
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt, éventuellement annotées par l'IA."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                          """SELECT type_photo, COALESCE(image_annotee, image_data) AS image_data,
+                                        CASE WHEN image_annotee IS NOT NULL THEN 'image/png'
+                                              ELSE image_type END AS image_type
+                       FROM photos_materiels
+                       WHERE id_materiel = %s AND est_avant = FALSE""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos d'analyse.") from exc
+
+    def recuperer_photos_comparaison(
+        self, materiel_id: int, type_photo: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Charge les photos avant/après, éventuellement pour une seule zone."""
+        requete = (
+            "SELECT id_photo, type_photo, image_data, image_type, est_avant "
+            "FROM photos_materiels WHERE id_materiel = %s"
+        )
+        parametres: tuple[Any, ...] = (materiel_id,)
+        if type_photo:
+            requete += " AND type_photo = %s"
+            parametres += (type_photo,)
+
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(requete, parametres)
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos en base.") from exc
+
+    def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
+        """Enregistre une copie annotée sans modifier la photo originale."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE photos_materiels
+                       SET image_annotee = %s
+                       WHERE id_photo = %s""",
+                    (image_data, id_photo),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer l'image annotée en base.") from exc
+
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO rapports_ia (id_materiel, contenu, origine)
+                       VALUES (%s, %s, %s)
+                       RETURNING id_rapport""",
+                    (materiel_id, contenu, origine),
+                )
+                return cur.fetchone()["id_rapport"]
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer le rapport IA.") from exc
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO validations_humaines (
+                           id_rapport, decision, type_anomalie, gravite, remarque
+                       )
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (rapport_id, decision, type_anomalie, gravite, remarque),
+                )
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer la validation humaine.") from exc
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT v.id_validation, v.id_rapport, v.decision,
+                              v.type_anomalie, v.gravite, v.remarque, v.cree_le
+                       FROM validations_humaines v
+                       JOIN rapports_ia r ON r.id_rapport = v.id_rapport
+                       WHERE r.id_materiel = %s
+                       ORDER BY v.cree_le DESC, v.id_validation DESC""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les validations humaines.") from exc
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT contenu FROM rapports_ia
+                       WHERE id_materiel = %s
+                       ORDER BY cree_le DESC, id_rapport DESC
+                       LIMIT 1""",
+                    (materiel_id,),
+                )
+                rapport = cur.fetchone()
+                return rapport["contenu"] if rapport else None
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer le rapport IA.") from exc
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id_rapport, contenu, origine, cree_le
+                       FROM rapports_ia
+                       WHERE id_materiel = %s
+                       ORDER BY cree_le DESC, id_rapport DESC""",
+                    (materiel_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les rapports IA.") from exc
 
     def creer_materiel(self, donnees: Mapping[str, Any]) -> None:
         try:

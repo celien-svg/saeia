@@ -1,35 +1,42 @@
 import json
-import argparse
+import asyncio
+import colorsys
 import math
 from io import BytesIO
-from typing import Any
+from pathlib import Path
+from typing import Any, TypedDict, cast
 
-import psycopg
 from PIL import Image, ImageDraw
 
 from ..config import get_settings
-from .vlm import OllamaConnectionError, OllamaResponseError, OllamaWrapper
+from ..storage.base import Storage
+from .base import OllamaConnectionError, OllamaResponseError
+from .vlm import OllamaVLM
 
-PROMPT_TEMPLATE = (
-    "Voici deux photos du même {zone} d'un ordinateur portable. "
-    "La PREMIÈRE image montre l'état AVANT le prêt (référence). "
-    "La SECONDE image montre l'état APRÈS restitution. "
-    "Compare-les et identifie toute dégradation physique nouvelle "
-    "(rayure, déformation, casse, tache...). "
-    "Si aucune différence n'est visible, renvoie une liste vide. "
-    "Réponds STRICTEMENT en JSON, sans texte autour : "
-    '{{"zones": [{{"element": "string", "anomalie": "string", "gravite": "aucune|legere|marquee|importante", "bbox": [0,0,0,0]}}]}}'
-)
+PROMPT_TEMPLATE = (Path(__file__).with_name("prompt.md")).read_text(encoding="utf-8")
 
 GRAVITES_AUTORISEES = {"aucune", "legere", "marquee", "importante"}
 CHAMPS_ZONE_ATTENDUS = {"element", "anomalie", "gravite", "bbox"}
+
+
+class ZoneDetection(TypedDict):
+    element: str
+    anomalie: str
+    gravite: str
+    bbox: list[int | float]
+
+
+class ReponseVLM(TypedDict):
+    zones: list[ZoneDetection]
 
 
 def _refuser_constante_json(valeur: str) -> None:
     raise ValueError(f"constante JSON non standard : {valeur}")
 
 
-def valider_reponse_json(reponse: str) -> dict[str, Any]:
+def valider_reponse_json(
+    reponse: str, *, largeur_image: int, hauteur_image: int,
+) -> ReponseVLM:
     """Parse et valide strictement la réponse JSON produite par le VLM."""
     try:
         donnees = json.loads(reponse, parse_constant=_refuser_constante_json)
@@ -57,7 +64,14 @@ def valider_reponse_json(reponse: str) -> dict[str, Any]:
             not isinstance(bbox, list)
             or len(bbox) != 4
             or any(isinstance(coord, bool) or not isinstance(coord, (int, float)) for coord in bbox)
-            or any(not math.isfinite(coord) or coord < 0 for coord in bbox)
+            or any(
+                not math.isfinite(coord) or coord < 0
+                for coord in bbox
+            )
+            or bbox[0] > largeur_image
+            or bbox[2] > largeur_image
+            or bbox[1] > hauteur_image
+            or bbox[3] > hauteur_image
             or bbox[0] > bbox[2]
             or bbox[1] > bbox[3]
         ):
@@ -65,57 +79,14 @@ def valider_reponse_json(reponse: str) -> dict[str, Any]:
                 f"la bbox de la zone {index} doit contenir quatre coordonnées valides"
             )
 
-    return donnees
-
-def recuperer_photos(
-    materiel_id: int,
-    type_photo: str | None = None,
-) -> dict[bool, dict[str, dict[str, Any]]]:
-    """Charge les photos d'un matériel, séparées par avant/après en les metant a la fin dans une variable pour créer ensuite un dictionnaire pour faciliter la méthode de comparaison."""
-    settings = get_settings()
-    requete = (
-        "SELECT id_photo, type_photo, image_data, image_type, est_avant "
-        "FROM photos_materiels WHERE id_materiel = %s"
-    )
-    parametres: tuple[Any, ...] = (materiel_id,)
-    if type_photo:
-        requete += " AND type_photo = %s"
-        parametres += (type_photo,)
-
-    try:
-        with psycopg.connect(
-            host=settings.POSTGRES_HOST,
-            port=settings.POSTGRES_PORT,
-            user=settings.POSTGRES_USER,
-            password=settings.POSTGRES_PASSWORD,
-            dbname=settings.POSTGRES_DB,
-        ) as connexion, connexion.cursor() as curseur:
-            curseur.execute(requete, parametres)
-            photos: dict[bool, dict[str, dict[str, Any]]] = {
-                False: {},
-                True: {},
-            }
-            for id_photo, type_photo, image_data, image_type, est_avant in curseur.fetchall():
-                photos[est_avant][type_photo] = {
-                    "id_photo": id_photo,
-                    "type_photo": type_photo,
-                    "image_data": image_data,
-                    "image_type": image_type,
-                    "est_avant": est_avant,
-                }
-            return photos
-    except psycopg.Error as exc:
-        raise RuntimeError("Impossible de récupérer les photos en base.") from exc
-
+    return cast(ReponseVLM, donnees)
 
 def construire_categories(
-    materiel_id: int,
-    type_photo: str | None = None,
+    photos: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Construit les comparaisons à partir des photos présentes en base en metant deux photo du même type et une qui viens d'avant et l'autre après."""
-    photos = recuperer_photos(materiel_id, type_photo)
-    photos_avant = photos[True]
-    photos_apres = photos[False]
+    """Associe les photos avant/après par zone, sans accès au stockage."""
+    photos_avant = {p["type_photo"]: p for p in photos if p["est_avant"]}
+    photos_apres = {p["type_photo"]: p for p in photos if not p["est_avant"]}
 
     categories = []
     for zone in sorted(photos_avant.keys() & photos_apres.keys()):
@@ -129,31 +100,12 @@ def construire_categories(
     return categories
 
 
-def enregistrer_image_annotee(id_photo: int, image_data: bytes) -> None:
-    """Remplace en base l'image de restitution par sa version annotée."""
-    settings = get_settings()
-    try:
-        with psycopg.connect(
-            host=settings.POSTGRES_HOST,
-            port=settings.POSTGRES_PORT,
-            user=settings.POSTGRES_USER,
-            password=settings.POSTGRES_PASSWORD,
-            dbname=settings.POSTGRES_DB,
-        ) as connexion, connexion.cursor() as curseur:
-            curseur.execute(
-                """UPDATE photos_materiels
-                SET image_data = %s, image_type = 'image/png'
-                WHERE id_photo = %s""",
-                (image_data, id_photo),
-            )
-    except psycopg.Error as exc:
-        raise RuntimeError("Impossible d'enregistrer l'image annotée en base.") from exc
-
-
-def analyser_categorie(
-    client: OllamaWrapper,
+async def analyser_categorie(
+    client: OllamaVLM,
     categorie: dict[str, Any],
     model: str,
+    *,
+    storage: Storage,
 ) -> dict:
     """Appelle le VLM pour une seule catégorie (2 images) et retourne le JSON parsé."""
     zone = categorie["zone"]
@@ -161,11 +113,17 @@ def analyser_categorie(
     after_photo = categorie["after"]
 
     print(f" Analyse de la zone : {zone}...")
+    with Image.open(BytesIO(after_photo["image_data"])) as image:
+        largeur_image, hauteur_image = image.size
 
     try:
-        result = client.compare_images(
+        result = await client.compare_images(
             model=model,
-            prompt=PROMPT_TEMPLATE.format(zone=zone),
+            prompt=PROMPT_TEMPLATE.format(
+                zone=zone,
+                largeur=largeur_image,
+                hauteur=hauteur_image,
+            ),
             image_before=before_photo["image_data"],
             image_after=after_photo["image_data"],
         )
@@ -174,7 +132,11 @@ def analyser_categorie(
         return {"zone": zone, "error": str(exc), "zones": []}
 
     try:
-        parsed = valider_reponse_json(result.response)
+        parsed = valider_reponse_json(
+            result.response,
+            largeur_image=largeur_image,
+            hauteur_image=hauteur_image,
+        )
     except ValueError as exc:
         print(f"  JSON invalide pour la zone '{zone}' : {result.response!r}")
         return {
@@ -190,7 +152,8 @@ def analyser_categorie(
             after_photo["image_data"],
             parsed["zones"],
         )
-        enregistrer_image_annotee(
+        await asyncio.to_thread(
+            storage.enregistrer_image_annotee,
             after_photo["id_photo"],
             image_annotee,
         )
@@ -201,87 +164,93 @@ def conversion_texte(categorie: dict) -> str:
     """
     convertie le json en texte pour l'interface ce qui est le travail demandé.
     """
+    zone = categorie.get("zone_analysee", categorie.get("zone", "inconnue"))
+
     if "error" in categorie:
-        return f"Zone {categorie['zone_analysee']} : Erreur - {categorie['error']}"
+        return f"Zone {zone} : Erreur - {categorie.get('error', 'inconnue')}"
 
     zones = categorie.get("zones", [])
-    if not zones:
-        return f"Zone {categorie['zone_analysee']} : Aucune dégradation détectée."
+    if "raw_response" in categorie and categorie["raw_response"]:
+        return f"Zone {zone} : {categorie['raw_response']}"
 
-    texte = f"Zone {categorie['zone_analysee']} :\n"
+    if not zones:
+        return f"Zone {zone} : Aucune dégradation détectée."
+
+    texte = f"Zone {zone} :\n"
     for z in zones:
         texte += (
-            f"- Élément : {z['element']}, Anomalie : {z['anomalie']}, "
-            f"Gravité : {z['gravite']}, BBox : {z['bbox']}\n"
+            f"- Élément : {z.get('element', 'inconnu')}, "
+            f"Anomalie : {z.get('anomalie', 'inconnue')}, "
+            f"Gravité : {z.get('gravite', 'inconnue')}, "
+            f"BBox : {z.get('bbox', [])}\n"
         )
     return texte.strip()
 
-def affichage_defaut(
-    image_data: bytes,
-    zones: list[dict[str, Any]],
-)-> bytes:
-    """Dessine en rouge les BBoxes et retourne l'image annotée en octets."""
+
+async def analyser_materiel(
+    materiel_id: int,
+    type_photo: str | None = None,
+    *,
+    storage: Storage,
+) -> str:
+    """Analyse les photos d'un matériel et retourne le rapport affichable."""
+    settings = get_settings()
+    # Le stockage ouvre et ferme sa connexion dans le thread de travail.
+    photos = await asyncio.to_thread(
+        storage.recuperer_photos_comparaison, materiel_id, type_photo,
+    )
+    categories = construire_categories(photos)
+    if not categories:
+        return "Aucune photo commune trouvée pour ce matériel."
+
+    rapports = []
+    async with OllamaVLM(
+        base_url=settings.OLLAMA_HOST,
+    ) as client:
+        for categorie in categories:
+            rapports.append(
+                await analyser_categorie(
+                    client,
+                    categorie,
+                    model=settings.OLLAMA_VLM_MODEL,
+                    storage=storage,
+                )
+            )
+    resultats = [conversion_texte(rapport) for rapport in rapports]
+    return "\n\n".join(resultats)
+
+def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
+    """Dessine les BBoxes des défauts avec une couleur distincte."""
     with Image.open(BytesIO(image_data)) as image:
         image_annotee = image.convert("RGB")
 
     dessin = ImageDraw.Draw(image_annotee)
-    for zone in zones:
+    largeur, hauteur = image_annotee.size
+    for index, zone in enumerate(zones):
         bbox = zone.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
-        if not all(isinstance(coord, (int, float)) for coord in bbox):
+        if any(
+            isinstance(coord, bool)
+            or not isinstance(coord, (int, float))
+            or not math.isfinite(coord)
+            for coord in bbox
+        ):
             continue
 
-        dessin.rectangle(tuple(bbox), outline="red", width=4)
+        x_min, y_min, x_max, y_max = bbox
+        x_min = max(0, min(x_min, largeur))
+        y_min = max(0, min(y_min, hauteur))
+        x_max = max(0, min(x_max, largeur))
+        y_max = max(0, min(y_max, hauteur))
+        if x_min <= x_max and y_min <= y_max:
+            teinte = (index * 0.618033988749895) % 1
+            couleur = tuple(
+                round(composante * 255)
+                for composante in colorsys.hsv_to_rgb(teinte, 1, 1)
+            )
+            dessin.rectangle((x_min, y_min, x_max, y_max), outline=couleur, width=4)
 
     image_sortie = BytesIO()
     image_annotee.save(image_sortie, format="PNG")
     return image_sortie.getvalue()
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Compare les photos d'un matériel avec celles d'une référence en base."
-    )
-    parser.add_argument("--materiel-id", type=int, required=True)
-    parser.add_argument(
-        "--type-photo",
-        help="Ne comparer qu'une zone, par exemple 'ecran' ou 'clavier'.",
-    )
-    args = parser.parse_args()
-
-    settings = get_settings()
-    client = OllamaWrapper(base_url=settings.OLLAMA_HOST, timeout_s=180.0)
-
-    print("Serveur dispo :", client.is_server_running())
-    if not client.is_server_running():
-        print("Ollama injoignable, on s'arrête.")
-        return
-
-    rapport_global = []
-    categories = construire_categories(
-        args.materiel_id,
-        args.type_photo,
-    )
-    if not categories:
-        print("Aucune photo commune trouvée pour ces matériels.")
-        return
-
-    for categorie in categories:
-        resultat = analyser_categorie(
-            client,
-            categorie,
-            model=settings.OLLAMA_VLM_MODEL,
-        )
-        rapport_global.append(resultat)
-
-
-
-    # print("\n Rapport global :")
-    # print(json.dumps(rapport_global, ensure_ascii=False, indent=2))
-
-    print("\n Rapport texte :")
-    for resultat in rapport_global:
-        print(conversion_texte(resultat))
-
-if __name__ == "__main__":
-    main()

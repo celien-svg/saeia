@@ -35,6 +35,10 @@ class SuiviPretService:
     def __init__(self, storage: Storage) -> None:
         self.storage = storage
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        """Retourne les entités disponibles pour associer un matériel."""
+        return self.storage.lister_entites()
+
     def lister_materiels(self) -> list[dict[str, Any]]:
         """Retourne les matériels disponibles."""
         return self.storage.lister_materiels()
@@ -46,6 +50,46 @@ class SuiviPretService:
     def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
         """Retourne les photos de référence (avant prêt) d'un matériel."""
         return self.storage.recuperer_photos(int(materiel_id))
+
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt, avec leurs annotations éventuelles."""
+        return self.storage.recuperer_photos_analyse(int(materiel_id))
+
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
+        """Enregistre le rapport avec sa provenance IA ou humaine."""
+        contenu = (contenu or "").strip()
+        if not contenu:
+            raise ValueError("Le rapport ne peut pas être vide.")
+        if origine not in {"ia", "humain"}:
+            raise ValueError("La provenance du rapport est invalide.")
+        return self.storage.enregistrer_rapport(int(materiel_id), contenu, origine)
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        """Enregistre la décision humaine associée à un rapport."""
+        self.storage.enregistrer_validation_humaine(
+            int(rapport_id), decision, type_anomalie, gravite, remarque,
+        )
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne l'historique des décisions humaines d'un matériel."""
+        return self.storage.lister_validations_humaines(int(materiel_id))
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        """Retourne le rapport IA déjà enregistré pour le matériel."""
+        return self.storage.recuperer_rapport(int(materiel_id))
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne tous les rapports IA du matériel, du plus récent au plus ancien."""
+        return self.storage.lister_rapports(int(materiel_id))
 
     def supprimer_materiel(self, materiel_id: int) -> None:
         """Supprime un matériel après normalisation de son identifiant."""
@@ -83,7 +127,7 @@ class SuiviPretService:
         if not localisation:
             raise ValueError("La localisation est obligatoire.")
         if entite_id is None:
-            raise ValueError("L'identifiant de l'entité est obligatoire.")
+            raise ValueError("La sélection d'une entité est obligatoire.")
 
         return nom, localisation
 

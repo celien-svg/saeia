@@ -25,6 +25,10 @@ class MaterielNotFoundError(StorageError):
 class Storage(ABC):
     """Définit les opérations de persistance requises par le métier."""
 
+    def lister_entites(self) -> list[dict[str, Any]]:
+        """Retourne les identifiants et noms des entités par ordre alphabétique."""
+        raise NotImplementedError
+
     @abstractmethod
     def lister_materiels(self) -> list[dict[str, Any]]:
         """Retourne les matériels du plus récent au plus ancien."""
@@ -36,6 +40,49 @@ class Storage(ABC):
 
     def recuperer_photos(self, materiel_id: int) -> list[dict[str, Any]]:
         """Retourne les photos de référence (est_avant=TRUE) d'un matériel."""
+        raise NotImplementedError
+
+    def recuperer_photos_analyse(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos après prêt (est_avant=FALSE) d'un matériel."""
+        raise NotImplementedError
+
+    def enregistrer_rapport(
+        self, materiel_id: int, contenu: str, origine: str = "ia",
+    ) -> int:
+        """Enregistre un rapport et indique s'il a été corrigé par un humain."""
+        raise NotImplementedError
+
+    def enregistrer_validation_humaine(
+        self,
+        rapport_id: int,
+        decision: str,
+        type_anomalie: str | None,
+        gravite: str | None,
+        remarque: str | None,
+    ) -> None:
+        """Enregistre la décision du gestionnaire pour un rapport IA."""
+        raise NotImplementedError
+
+    def lister_validations_humaines(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne les validations humaines liées aux rapports d'un matériel."""
+        raise NotImplementedError
+
+    def recuperer_photos_comparaison(
+        self, materiel_id: int, type_photo: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après, avec leur id_photo et est_avant."""
+        raise NotImplementedError
+
+    def enregistrer_image_annotee(self, id_photo: int, image_data: bytes) -> None:
+        """Enregistre une copie annotée sans modifier la photo originale."""
+        raise NotImplementedError
+
+    def recuperer_rapport(self, materiel_id: int) -> str | None:
+        """Retourne le dernier rapport IA d'un matériel, s'il existe."""
+        raise NotImplementedError
+
+    def lister_rapports(self, materiel_id: int) -> list[dict[str, Any]]:
+        """Retourne l'historique des rapports IA d'un matériel."""
         raise NotImplementedError
 
     @abstractmethod
