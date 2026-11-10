@@ -1,227 +1,293 @@
-# Guide d'Utilisation & Manuel Utilisateur
-## Application de Suivi de Prêt d'Ordinateurs avec Analyse Visuelle par IA
+# Guide utilisateur
+
+## Suivi de prêt d'ordinateurs avec analyse visuelle par IA
+
+> **Objectif :** enregistrer l'état d'un ordinateur avant le prêt, comparer
+> son état lors de la restitution et conserver la décision du gestionnaire.
+
+<p align="center">
+  <strong>📸 État avant</strong>
+  &nbsp;→&nbsp;
+  <strong>🤖 Comparaison</strong>
+  &nbsp;→&nbsp;
+  <strong>✅ Décision du gestionnaire</strong>
+</p>
+
+## Sommaire
+
+- [Démarrage en 5 minutes](#démarrage-en-5-minutes)
+- [Comprendre le fonctionnement](#comprendre-le-fonctionnement)
+- [Utiliser l'application](#utiliser-lapplication)
+  - [Ouvrir l'application](#1-ouvrir-lapplication)
+  - [Consulter le parc](#2-consulter-le-parc)
+  - [Ajouter un ordinateur](#3-ajouter-un-ordinateur)
+  - [Enregistrer une restitution](#4-enregistrer-une-restitution)
+  - [Lancer et lire une analyse](#5-lancer-et-lire-une-analyse)
+  - [Consulter l'historique](#6-consulter-lhistorique)
+  - [Modifier une fiche](#7-modifier-une-fiche)
+  - [Supprimer une fiche](#8-supprimer-une-fiche)
+- [Prendre de bonnes photos](#prendre-de-bonnes-photos)
+- [FAQ et résolution des problèmes](#faq-et-résolution-des-problèmes)
 
 ---
 
-## Table des matières
+## Démarrage en 5 minutes
 
-1. [Bienvenue](#1-bienvenue)
-   - 1.1 [À quoi sert cette application ?](#11--quoi-sert-cette-application-)
-   - 1.2 [Les grands principes : l'état Avant et l'état Après](#12-les-grands-principes--ltat-avant-et-ltat-aprs)
-2. [Guide d'Utilisation Pas à Pas](#2-guide-dutilisation-pas--pas)
-   - 2.1 [Étape 1 : Accéder à l'application et page d'accueil](#21-tape-1--accder--lapplication-et-page-daccueil)
-   - 2.2 [Étape 2 : Consulter la liste du parc d'ordinateurs](#22-tape-2--consulter-la-liste-du-parc-dordinateurs)
-   - 2.3 [Étape 3 : Enregistrer un nouvel ordinateur (Prêt initial)](#23-tape-3--enregistrer-un-nouvel-ordinateur-prt-initial)
-   - 2.4 [Étape 4 : Restitution du matériel et versement des nouvelles photos](#24-tape-4--restitution-du-matriel-et-versement-des-nouvelles-photos)
-   - 2.5 [Étape 5 : Consulter le diagnostic comparatif de l'IA](#25-tape-5--consulter-le-diagnostic-comparatif-de-lia)
-   - 2.6 [Étape 6 : Modifier les informations d'un ordinateur](#26-tape-6--modifier-les-informations-dun-ordinateur)
-   - 2.7 [Étape 7 : Supprimer un ordinateur en toute sécurité](#27-tape-7--supprimer-un-ordinateur-en-toute-scurit)
-3. [Tutoriel Prise en Main Rapide (5 minutes)](#3-tutoriel-prise-en-main-rapide-5-minutes)
-4. [Foire Aux Questions (FAQ)](#4-foire-aux-questions-faq)
-5. [Conseils pour des Prises de Vue Optimales](#5-conseils-pour-des-prises-de-vue-optimales)
+1. Ouvrez l'application à l'adresse fournie par l'administrateur
+   (par défaut `http://localhost:7860`).
+2. Cliquez sur **Voir la liste des ordinateurs**.
+3. Ajoutez un ordinateur avec un **nom**, une **localisation** et une
+   **entité**.
+4. Ajoutez au moins une photo de référence, puis cliquez sur
+   **Ajouter le matériel**.
+5. À la restitution, ouvrez **Analyse**, ajoutez les photos après, puis
+   cliquez sur **Lancer l'analyse**.
+6. Vérifiez le résultat, corrigez-le si nécessaire et cliquez sur
+   **Enregistrer le rapport**.
 
----
-
-## 1. Bienvenue
-
-### 1.1 À quoi sert cette application ?
-
-Bienvenue sur l'application de **Suivi de Prêt d'Ordinateurs**. 
-
-Cette solution a été spécialement conçue pour les gestionnaires et personnels administratifs chargés du prêt d'ordinateurs portables aux étudiants. Elle vous permet :
-- De tenir un **inventaire à jour** et clair de toutes vos machines disponibles.
-- D'enregistrer des **photos de référence** lors de la remise de l'ordinateur à l'étudiant.
-- De photographier la machine à son **retour de prêt**.
-- De confier à une **Intelligence Artificielle d'analyse visuelle** la comparaison minutieuse des deux états afin de mettre automatiquement en évidence les rayures, fissures, touches de clavier manquantes ou chocs récents.
-
-> [!NOTE]
-> L'Intelligence Artificielle est un **outil d'aide à la décision**. Elle surligne les zones suspectes pour vous faire gagner du temps, mais c'est toujours vous, gestionnaire, qui conservez le contrôle et la décision finale.
+> [IMPORTANT]
+> L'IA fournit une aide à l'inspection. Elle ne décide pas à la place du
+> gestionnaire : vérifiez toujours les photos et le rapport avant de valider.
 
 ---
 
-### 1.2 Les grands principes : l'état Avant et l'état Après
+## Comprendre le fonctionnement
 
-Pour chaque ordinateur portable, l'application suit deux étapes photographiques :
-
-```
-┌─────────────────────────────────┐        ┌──────────────────────────────────┐
-│        1. PHOTO AVANT           │        │         2. PHOTO APRÈS           │
-│   (État initial de référence)   │        │     (État lors du retour)        │
-│ Prise le jour où l'ordinateur   │  ────► │ Prise le jour où l'étudiant      │
-│ est remis à l'étudiant.         │        │ rend l'ordinateur.               │
-└─────────────────────────────────┘        └──────────────────────────────────┘
-                                                            │
-                                                            ▼
-                                           ┌──────────────────────────────────┐
-                                           │       3. COMPARAISON IA          │
-                                           │ L'ordinateur compare chaque face │
-                                           │ et signale toute dégradation     │
-                                           │ nouvelle (rayure, casse, tâche). │
-                                           └──────────────────────────────────┘
-```
-
-Pour une efficacité maximale, 6 angles de vue sont documentés :
-1. **Dessus** (capot supérieur)
-2. **Dessous** (coque inférieure et patins)
-3. **Écran** (dalle allumée ou éteinte)
-4. **Clavier** (touches et pavé tactile)
-5. **Connectique gauche** (ports USB, HDMI, alimentation)
-6. **Connectique droite** (ports audio, lecteur de carte, USB)
-
----
-
-## 2. Guide d'Utilisation Pas à Pas
-
-### 2.1 Étape 1 : Accéder à l'application et page d'accueil
-
-1. Ouvrez votre navigateur internet habituel (Google Chrome, Mozilla Firefox, Microsoft Edge).
-2. Saisissez l'adresse de l'application : `http://localhost:7860` (ou l'adresse transmise par votre administrateur).
-3. La page d'accueil s'affiche avec un bouton central : **« Voir la liste des ordinateurs »**. Cliquez dessus pour démarrer.
-
----
-
-### 2.2 Étape 2 : Consulter la liste du parc d'ordinateurs
-
-L'écran principal présente l'ensemble des machines sous forme de tableau clair et synthétique :
-
-| Colonne | Signification |
-| :--- | :--- |
-| **Nom** | Désignation usuelle de la machine (ex. *Dell Latitude 5420 n°12*). |
-| **État** | Situation physique : `OK`, `Réservé`, `En réparation`, `Endommagé`, ou `Disparu`. |
-| **Localisation** | Salle ou bureau où se trouve actuellement la machine (ex. *Bureau B102*). |
-| **Modifier** | Bouton ouvrant la fiche de l'ordinateur pour corriger ou actualiser ses informations. |
-| **Supprimer** | Bouton permettant de retirer définitivement une machine de l'inventaire. |
-| **Analyse** | Bouton ouvrant le comparateur photographique pour vérifier l'état au retour de prêt. |
-
-En haut du tableau, vous disposez de deux boutons d'action rapide :
-- **« Ajouter un ordinateur »** : pour enregistrer un nouvel appareil.
-- **« Accueil »** : pour revenir à la page d'ouverture.
-
----
-
-### 2.3 Étape 3 : Enregistrer un nouvel ordinateur (Prêt initial)
-
-Pour ajouter une machine dans l'inventaire :
-1. Depuis la liste, cliquez sur le bouton **« Ajouter un ordinateur »**.
-2. Remplissez les informations demandées :
-   - **Nom \*** *(obligatoire)* : Nom reconnaissable de l'ordinateur.
-   - **Modèle** : Marque et modèle précis (ex. *Lenovo ThinkPad E14*).
-   - **Année** : Année d'acquisition.
-   - **Étiquette ULCO** : Numéro d'inventaire unique figurant sur le code-barres de la machine.
-   - **État \*** *(obligatoire)* : Sélectionnez `OK` par défaut.
-   - **Localisation \*** *(obligatoire)* : Lieu de stockage initial.
-   - **Descriptif & Remarque** : Remarques éventuelles (ex. *Chargeur d'origine inclus*).
-   - **Identifiant de l'entité \*** *(obligatoire)* : Entrez `1` (pour l'ULCO).
-3. **Déposez les 6 photos d'état initial** dans les cadres prévus :
-   - Vous pouvez glisser-déposer vos fichiers images ou cliquer sur chaque zone pour sélectionner les photos depuis votre ordinateur ou smartphone.
-4. Cliquez sur **« Enregistrer »**.
-   - *Si tout est valide :* un message vert de confirmation s'affiche en haut de l'écran et vous retournez à la liste.
-   - *Si un champ obligatoire a été oublié :* un message d'avertissement jaune apparaît pour vous indiquer précisément quel champ manque, sans effacer le reste de vos saisies !
-
----
-
-### 2.4 Étape 4 : Restitution du matériel et versement des nouvelles photos
-
-Lorsqu'un étudiant rapporte son ordinateur à l'issue de sa période de prêt :
-1. Repérez la ligne correspondant à l'ordinateur dans la liste.
-2. Cliquez sur le bouton **« Analyse »** situé à droite de la ligne.
-3. La page d'analyse s'ouvre :
-   - Dans la colonne de gauche, vous retrouvez la **Photo avant** prise le jour du prêt.
-   - Dans la colonne de droite, déposez la **Photo après** correspondante que vous venez de prendre.
-4. Une fois les photos de retour déposées, cliquez sur le bouton bleu **« Ajouter les photos »**.
-5. Une notification confirme : *« Photos d'analyse enregistrées. »*
-
----
-
-### 2.5 Étape 5 : Consulter le diagnostic comparatif de l'IA
-
-Directement sous les photos de la page d'analyse se trouve le bloc **🤖 Réponse de l'IA** :
-- L'analyse comparative se charge d'examiner chaque angle de l'ordinateur.
-- Si l'ordinateur est restitué en parfait état, l'IA indique qu'aucune dégradation n'a été constatée.
-- En cas d'anomalie, un compte-rendu clair vous indique :
-  - La zone touchée (écran, capot, connectique, etc.).
-  - Le type de dégât (rayure, fissure, choc, tâche).
-  - Le degré de gravité : **légère**, **marquée** ou **importante**.
-
----
-
-### 2.6 Étape 6 : Modifier les informations d'un ordinateur
-
-Si un ordinateur change de localisation, passe en maintenance ou si vous souhaitez corriger une étiquette :
-1. Dans la liste, cliquez sur le bouton **« Modifier »** de la machine concernée.
-2. Le formulaire s'ouvre **automatiquement pré-rempli** avec toutes les données actuelles de l'ordinateur.
-3. Modifiez uniquement les informations souhaitées (par exemple, passez l'état à `En réparation` ou changez la localisation).
-4. *Gestion des photos :* Vous n'avez pas besoin de recharger les photos ! Laissez les cadres de photos vides pour **conserver automatiquement les photos existantes**. Déposez une photo uniquement si vous souhaitez remplacer une photo de référence.
-5. Cliquez sur **« Enregistrer les modifications »**. Un message vert confirme la mise à jour.
-
----
-
-### 2.7 Étape 7 : Supprimer un ordinateur en toute sécurité
-
-Pour éviter toute perte accidentelle de données suite à une maladresse de souris, le logiciel intègre une **sécurité à double confirmation** :
-1. Cliquez sur le bouton **« Supprimer »** en face de l'ordinateur concerné.
-2. Le bouton devient rouge et son texte se transforme en **« Confirmer ? »**.
-3. **Si vous avez cliqué par erreur :** cliquez simplement ailleurs ou rechargez la page, l'ordinateur ne sera pas supprimé.
-4. **Si vous souhaitez réellement supprimer la fiche :** cliquez une deuxième fois sur **« Confirmer ? »**. L'ordinateur et toutes ses photos associées sont alors supprimés définitivement.
-
----
-
-## 3. Tutoriel Prise en Main Rapide (5 minutes)
-
-### Scénario : « Mon premier prêt et retour d'ordinateur »
-
-Suivez cet exemple guidé pour maîtriser l'application en quelques minutes :
-
-1. **Création du matériel (Départ)** :
-   - Cliquez sur **« Voir la liste des ordinateurs »**, puis sur **« Ajouter un ordinateur »**.
-   - Nom : `PC Test 01` | État : `OK` | Localisation : `Accueil IUT` | Entité : `1`.
-   - Chargez une photo nette du capot et de l'écran dans les cadres correspondants.
-   - Cliquez sur **« Enregistrer »**. Votre ordinateur apparaît aussitôt dans le tableau !
-2. **Simulation du retour (Restitution)** :
-   - Sur la ligne de `PC Test 01`, cliquez sur **« Analyse »**.
-   - Observez à gauche la photo de départ.
-   - Déposez dans le cadre de droite la photo prise au retour.
-   - Cliquez sur **« Ajouter les photos »**.
-3. **Mise à jour de l'inventaire** :
-   - Cliquez sur **« Retour à la liste »**.
-   - Cliquez sur **« Modifier »** pour passer l'état à `Réservé` pour le prochain prêt.
-   - Cliquez sur **« Enregistrer les modifications »**.
-
-Félicitations, vous maîtrisez l'intégralité du cycle de gestion !
-
----
-
-## 4. Foire Aux Questions (FAQ)
-
-### Q1 : Quels sont les formats de photos acceptés ?
-**R :** L'application accepte tous les formats d'images courants : **JPEG (.jpg, .jpeg)**, **PNG (.png)** et **WebP**. Les images sont automatiquement compressées et optimisées par le logiciel pour ne pas saturer l'espace disque.
-
-### Q2 : Que se passe-t-il si j'oublie de remplir un champ obligatoire ?
-**R :** Aucun risque de blocage ! Un bandeau d'avertissement jaune apparaît en haut de l'écran en vous indiquant les champs manquants (par exemple : *« Champs obligatoires manquants : le nom, la localisation »*). Tout ce que vous aviez déjà écrit ou téléversé reste en place.
-
-### Q3 : Pourquoi l'application refuse-t-elle mon étiquette ULCO ?
-**R :** Chaque étiquette ULCO est un identifiant unique. Si vous recevez le message *« Cette étiquette ULCO existe déjà »*, c'est qu'un autre ordinateur porte déjà ce numéro dans la base. Vérifiez l'inventaire pour éviter les doublons.
-
-### Q4 : Que faire si l'IA signale une rayure qui n'en est pas une (faux positif) ?
-**R :** Un reflet de lumière ou un cheveu sur la coque peut parfois être interprété comme une rayure par le modèle de vision. L'avis de l'IA n'étant qu'indicatif, vous pouvez inspecter visuellement la zone et ignorer le signalement si la machine est intacte.
-
-### Q5 : Puis-je modifier un ordinateur sans devoir reprendre toutes les photos ?
-**R :** Oui, absolument ! Dans le formulaire de modification, laissez simplement les champs photos vides : l'application conservera fidèlement les photos de référence déjà enregistrées.
-
----
-
-## 5. Conseils pour des Prises de Vue Optimales
-
-Pour que la comparaison visuelle par l'Intelligence Artificielle soit la plus précise et fiable possible, suivez ces quelques recommandations lors de vos prises de clichés :
-
-```
-    ✅ À FAIRE                                   ❌ À ÉVITER
- ────────────────────────────────────────────────────────────────────────────
- • Poser l'ordinateur à plat sur une table   • Tenir l'ordinateur à bout de bras
- • Privilégier une lumière blanche et diffuse• Utiliser un flash direct (reflets)
- • Cadrer la face entière de façon centrée   • Prendre la photo de biais / trop près
- • Nettoyer l'écran avec un chiffon microfibre• Laisser des traces de doigts ou poussière
+```mermaid
+flowchart LR
+    A["1. Photos avant<br/>État de référence"] --> B["2. Prêt"]
+    B --> C["3. Photos après<br/>Restitution"]
+    C --> D["4. Analyse IA<br/>Comparaison"]
+    D --> E["5. Rapport<br/>et décision humaine"]
 ```
 
-En respectant ces consignes simples, la détection des dégradations sera quasi-instantanée et sans ambiguïté.
+Les photos sont associées à une zone de l'ordinateur :
 
+| Zone affichée | Vue à photographier |
+| --- | --- |
+| `dessus` | Capot supérieur |
+| `dessous` | Coque inférieure et patins |
+| `ecran` | Dalle et bordures de l'écran |
+| `clavier` | Touches et pavé tactile |
+| `connectique_gauche` | Ports situés à gauche |
+| `connectique_droite` | Ports situés à droite |
+
+Une comparaison n'est réalisée que lorsqu'une photo **avant** et une photo
+**après** existent pour la même zone.
+
+---
+
+## Utiliser l'application
+
+### 1. Ouvrir l'application
+
+1. Ouvrez Chrome, Firefox ou Edge.
+2. Saisissez l'adresse de l'application fournie par votre administrateur.
+3. Cliquez sur **Voir la liste des ordinateurs**.
+
+![Page d'accueil](./img/accueil.png)
+
+*La page d'accueil permet d'accéder à la liste des ordinateurs.*
+
+### 2. Consulter le parc
+
+La liste présente les informations principales de chaque ordinateur :
+
+| Élément | Utilité |
+| --- | --- |
+| **Nom** | Identifier la machine |
+| **État** | `OK`, `Réservé`, `En réparation`, `Endommagé` ou `Disparu` |
+| **Localisation** | Indiquer où se trouve la machine |
+| **Voir** | Ouvrir la fiche en lecture seule |
+| **Modifier** | Corriger les informations ou remplacer des photos |
+| **Supprimer** | Retirer définitivement la machine |
+| **Analyse** | Ouvrir le parcours avant/après |
+
+![Liste des ordinateurs](./img/liste_ordi.png)
+
+*La liste permet de consulter, modifier, supprimer ou analyser un ordinateur.*
+
+### 3. Ajouter un ordinateur
+
+Depuis la liste, cliquez sur **Ajouter un ordinateur** puis complétez le
+formulaire :
+
+- **Nom \*** : nom reconnaissable de la machine ;
+- **Modèle** : marque et modèle ;
+- **Année** : année d'acquisition, si elle est connue ;
+- **Étiquette ULCO** : identifiant unique de l'inventaire ;
+- **État \*** : généralement `OK` lors de l'enregistrement ;
+- **Localisation \*** : salle, bureau ou zone de stockage ;
+- **Entité \*** : entité propriétaire du matériel ;
+- **Descriptif** et **Remarque** : informations complémentaires.
+
+Ajoutez ensuite les photos de référence disponibles. Les six zones sont
+proposées, mais une photo manquante empêchera seulement la comparaison de la
+zone concernée.
+
+Cliquez sur **Ajouter le matériel**.
+
+![Ajouter un ordinateur](./img/ajout_ordi.png)
+
+> [ATTENTION]
+> Le nom, la localisation et l'entité sont obligatoires. Une étiquette ULCO
+> déjà utilisée est refusée car elle doit rester unique.
+
+### 4. Enregistrer une restitution
+
+1. Dans la liste, cliquez sur **Analyse** pour l'ordinateur concerné.
+2. Pour chaque zone, consultez la photo **avant** affichée à gauche.
+3. Déposez la photo **après** prise lors de la restitution à droite.
+4. Cliquez sur **Ajouter les photos**.
+
+Les photos après sont enregistrées dans l'application. Elles ne sont pas
+analysées tant que vous n'avez pas cliqué sur **Lancer l'analyse**.
+
+> [ASTUCE]
+> Photographiez l'ordinateur dans une position et une lumière aussi proches
+> que possible de celles utilisées lors du prêt.
+
+![Analyser](./img/analyse.png)
+
+### 5. Lancer et lire une analyse
+
+Cliquez sur **Lancer l'analyse**. Pour chaque paire de photos disponible,
+l'application :
+
+1. compare la photo avant avec la photo après ;
+2. vérifie le résultat avant de l'afficher ;
+3. affiche les anomalies détectées ;
+4. met en évidence les zones concernées sur les photos après.
+
+Le rapport peut indiquer :
+
+- la zone et l'élément concernés ;
+- le type d'anomalie : rayure, fissure, tâche, choc, etc. ;
+- la gravité : aucune, légère, marquée ou importante ;
+- la zone de la photo où l'anomalie a été repérée.
+
+Si une paire n'existe pas, le message **Aucune photo commune trouvée pour ce
+matériel** est affiché.
+
+> [IMPORTANT]
+> Si l'analyse ne peut pas aboutir, un message vous l'indique. Vérifiez que
+> les photos sont bien présentes et demandez de l'aide à l'administrateur si
+> le problème persiste.
+
+### 6. Consulter l'historique
+
+Après une analyse :
+
+1. vérifiez le texte affiché dans **Réponse de l'analyse** ;
+2. corrigez le texte directement si nécessaire ;
+3. cliquez sur **Enregistrer le rapport** ;
+4. cliquez sur **Liste des rapports** pour afficher l'historique.
+
+Chaque rapport conserve son origine :
+
+- `ia` : texte enregistré sans modification ;
+- `humain` : texte modifié par le gestionnaire.
+
+L'historique affiche également les décisions et remarques ajoutées par les
+gestionnaires.
+
+![Historique](./img/historique.png)
+
+### 7. Modifier une fiche
+
+1. Dans la liste, cliquez sur **Modifier**.
+2. Les informations existantes sont préremplies.
+3. Modifiez les champs nécessaires.
+4. Laissez les champs photo vides pour conserver les photos actuelles.
+5. Déposez une nouvelle photo uniquement pour remplacer celle d'une zone.
+6. Cliquez sur **Enregistrer les modifications**.
+
+### 8. Supprimer une fiche
+
+1. Cliquez sur **Supprimer**.
+2. Cliquez une deuxième fois sur **Confirmer ?** pour confirmer.
+
+La suppression retire la fiche et les données associées. Si le premier clic
+était accidentel, ne confirmez pas.
+
+---
+
+## Prendre de bonnes photos
+
+| À faire ✅ | À éviter ❌ |
+| --- | --- |
+| Poser l'ordinateur sur une surface stable | Photographier l'appareil à bout de bras |
+| Cadrer toute la zone | Couper un bord ou un connecteur |
+| Garder une distance et un angle réguliers | Changer fortement de perspective |
+| Utiliser une lumière diffuse | Utiliser un flash créant des reflets |
+| Nettoyer l'écran et la coque | Laisser poussière ou traces de doigts |
+
+Pour chaque zone, essayez de conserver le même cadrage entre la photo avant et
+la photo après. Les images sont adaptées automatiquement avant leur enregistrement.
+
+Les images d'exemple servent de repères et ne sont jamais enregistrées à la
+place des photos fournies par le gestionnaire.
+
+---
+
+## FAQ et résolution des problèmes
+
+<details>
+<summary><strong>Quels formats d'image puis-je utiliser ?</strong></summary>
+
+Les formats d'image courants, comme JPG et PNG, sont acceptés. Les images sont
+adaptées automatiquement avant leur enregistrement.
+</details>
+
+<details>
+<summary><strong>Pourquoi mon ordinateur ne peut-il pas être enregistré ?</strong></summary>
+
+Vérifiez les champs obligatoires : nom, localisation et entité. Vérifiez aussi
+que l'étiquette ULCO n'est pas déjà associée à un autre ordinateur.
+</details>
+
+<details>
+<summary><strong>Pourquoi aucune anomalie n'est-elle affichée ?</strong></summary>
+
+Vérifiez qu'une photo avant et une photo après existent pour la même zone.
+Vérifiez également que le service d'analyse est disponible. Si le problème
+persiste, demandez de l'aide à l'administrateur.
+</details>
+
+<details>
+<summary><strong>L'IA a-t-elle toujours raison ?</strong></summary>
+
+Non. Un reflet, une poussière ou un changement d'angle peut produire un faux
+positif. Comparez les photos vous-même et utilisez la validation humaine pour
+conserver la décision réellement retenue.
+</details>
+
+<details>
+<summary><strong>Comment conserver les photos existantes lors d'une modification ?</strong></summary>
+
+Laissez les champs photo vides dans le formulaire de modification. Seules les
+zones pour lesquelles vous fournissez une nouvelle photo sont remplacées.
+</details>
+
+<details>
+<summary><strong>Que faire si l'analyse ne fonctionne pas ?</strong></summary>
+
+Vérifiez que les photos avant et après sont bien présentes pour la même zone.
+Si le problème persiste, transmettez le message affiché à l'administrateur.
+Les photos et les rapports déjà enregistrés restent conservés.
+</details>
+
+---
+
+## Besoin d'aide ?
+
+Avant de signaler un problème, notez :
+
+1. le nom de l'ordinateur ;
+2. la zone analysée ;
+3. l'action effectuée ;
+4. le message affiché ;
+5. l'heure approximative du problème.
+
+Ces informations permettent à l'administrateur de comprendre rapidement le
+problème.

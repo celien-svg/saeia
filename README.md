@@ -111,9 +111,10 @@ Chaque sauvegarde crée une version dans l'historique, avec sa date et son
 origine (`ia` ou `humain`), afin de conserver le texte automatique et les
 corrections successives.
 
-Actuellement, les annotations remplacent les photos après dans la base.
-Les images affichées sont rechargées automatiquement à la fin de l'analyse :
-les boîtes englobantes apparaissent directement sur les photos après.
+Les annotations sont enregistrées dans la colonne `image_annotee` sans
+remplacer les photos après originales. Les images affichées sont rechargées
+automatiquement à la fin de l'analyse : les boîtes englobantes apparaissent
+directement sur les photos après.
 
 ## Prompt et validation
 
@@ -130,8 +131,8 @@ Les gravités acceptées sont `aucune`, `legere`, `marquee` et `importante`.
 Une réponse invalide produit un message d'erreur pour la zone.
 
 Le contrôle des boîtes englobantes vérifie quatre coordonnées numériques,
-finies, non négatives et ordonnées. Leur appartenance aux dimensions réelles
-de l'image n'est pas encore vérifiée.
+finies, non négatives, ordonnées et comprises dans les dimensions réelles de
+l'image analysée.
 
 La validation humaine propose trois décisions exclusives : accepter une
 dégradation, modifier son type ou sa gravité, ou ignorer un faux positif.

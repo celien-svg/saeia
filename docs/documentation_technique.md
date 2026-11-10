@@ -38,7 +38,10 @@ Il permet :
 - La collecte des photographies d'état lors de la restitution (état « après »).
 - L'évaluation différentielle automatisée via un modèle de vision par ordinateur (VLM - *Vision Language Model*) servi localement via Ollama, produisant un rapport JSON d'anomalies (rayures, fissures, déformations, touches manquantes) localisées par boîtes englobantes (`bounding boxes`).
 
-Le système est conçu selon les principes d'architecture découplée, de testabilité unitaire et de robustesse en production.
+Le système est conçu selon les principes d'architecture découplée, de
+testabilité unitaire et de robustesse en production. L'application ne gère pas
+les comptes utilisateurs ni l'authentification : l'accès est assuré par
+l'environnement qui expose l'interface Gradio.
 
 ---
 
@@ -172,15 +175,6 @@ classDiagram
         +supprimer_materiel(materiel_id: int) void
     }
 
-    class StockageMemoire {
-        +dict donnees
-        +int materiel_id
-        +lister_materiels() List~dict~
-        +creer_materiel(donnees: Mapping) void
-        +modifier_materiel(materiel_id: int, donnees: Mapping) void
-        +supprimer_materiel(materiel_id: int) void
-    }
-
     class SuiviPretService {
         -Storage storage
         +lister_materiels() List~dict~
@@ -194,7 +188,7 @@ classDiagram
         -_preparer_photos_data(photos: Mapping) List~dict~
     }
 
-    class OllamaWrapper {
+    class OllamaVLM {
         -str base_url
         -Client client
         +is_server_running() bool
@@ -235,7 +229,7 @@ Le projet suit une **architecture en couches** étanche et modulaire :
 ┌──────────────▼─────────────┐ ┌──────────────▼───────────────┐
 │     Couche Persistance     │ │     Couche Intégration IA   │
 │  src/suivi_pret/storage/   │ │  src/.../ollama_client/     │
-│  - Contrat abstrait Storage│ │  - OllamaWrapper            │
+│  - Contrat abstrait Storage│ │  - OllamaVLM                │
 │  - Driver PostgresStorage  │ │  - ia_comparaison.py        │
 │    (requêtes SQL / psycopg)│ │  - Validation stricte JSON   │
 └──────────────┬─────────────┘ └──────────────┬───────────────┘
@@ -255,9 +249,12 @@ Le projet suit une **architecture en couches** étanche et modulaire :
    - *Bénéfice :* Le service métier ignore la nature du stockage sous-jacent (PostgreSQL, SQLite, mémoire).
 2. **Inversion de dépendance (Dependency Injection)** :
    - Le constructeur de `SuiviPretService` reçoit une instance concrète de `Storage` : `service = SuiviPretService(PostgresStorage())`.
-   - *Bénéfice :* Permet d'injecter `StockageMemoire` lors de l'exécution des tests unitaires sans nécessiter de serveur PostgreSQL actif.
+   - *Bénéfice :* Permet d'injecter un double de stockage lors de l'exécution
+     des tests unitaires sans nécessiter de serveur PostgreSQL actif.
 3. **Adapter / Wrapper Pattern** :
-   - [`OllamaWrapper`](file:///c:/cours/BUT3/saeia/src/suivi_pret/ollama_client/vlm.py) adapte les endpoints HTTP bruts de l'API Ollama (`/api/generate`, `/api/tags`) en une interface Python fortement typée renvoyant des dataclasses (`OllamaGenerateResult`, `OllamaModelInfo`).
+   - [`OllamaVLM`](file:///c:/cours/BUT3/saeia/src/suivi_pret/ollama_client/vlm.py)
+     adapte l'endpoint de génération d'Ollama en une interface Python typée
+     renvoyant `OllamaGenerateResult`.
 4. **Data Normalization & DTO** :
    - Normalisation systématique des données avant persistance (suppression des espaces superflus, conversion des entiers, typage MIME déduit par `mimetypes`).
 
@@ -300,7 +297,7 @@ graph LR
 
 Le code source respecte scrupuleusement la **PEP 8** et les conventions de l'écosystème Python :
 - **Modules et packages** : Noms en minuscules avec tirets bas (`suivi_pret`, `ia_comparaison.py`, `ui_gradio.py`).
-- **Classes** : Notation PascalCase (`SuiviPretService`, `PostgresStorage`, `OllamaWrapper`).
+- **Classes** : Notation PascalCase (`SuiviPretService`, `PostgresStorage`, `OllamaVLM`).
 - **Méthodes et variables** : Notation snake_case explicite (`lister_materiels`, `ajouter_photos_analyse`, `etiquette_ulco`).
 - **Constantes** : Majuscules (`TAILLE_MAX_PHOTO`, `TYPES_PHOTOS`, `GRAVITES_AUTORISEES`).
 
@@ -328,8 +325,7 @@ StorageError (Exception générique de stockage)
 
 OllamaError (Exception générique IA)
 ├── OllamaConnectionError (Serveur Ollama injoignable)
-├── OllamaResponseError (Réponse HTTP ou JSON invalide)
-└── OllamaServerStartError (Échec du démarrage de l'instance locale)
+└── OllamaResponseError (Réponse HTTP ou JSON invalide)
 ```
 
 Dans l'interface utilisateur Gradio :
@@ -344,16 +340,10 @@ Dans l'interface utilisateur Gradio :
 
 Le fichier [`docker/Dockerfile`](file:///c:/cours/BUT3/saeia/docker/Dockerfile) implémente la construction de l'image applicative :
 
-```dockerfile
-FROM python:3.12-slim
-WORKDIR /app
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . /app
-ENV PYTHONUNBUFFERED=1
-EXPOSE 7860
-CMD ["python", "-m", "src.suivi_pret.ui_gradio"]
-```
+Le conteneur lance `lancer_application()` depuis
+`src.suivi_pret.ui_gradio`. Le fichier Dockerfile utilise `python:3.12-slim`,
+installe `requirements.txt`, expose le port `7860` et active les logs non
+bufferisés.
 
 #### Optimisations appliquées :
 1. Image de base légère `python:3.12-slim` pour réduire l'empreinte disque et les failles de sécurité.
@@ -362,7 +352,7 @@ CMD ["python", "-m", "src.suivi_pret.ui_gradio"]
 
 ---
 
-### 5.2 Pipeline d'intégration continue (CI/CD GitHub Actions)
+### 5.2 Pipeline d'intégration continue (GitHub Actions)
 
 Le fichier [`.github/workflows/ci.yml`](file:///c:/cours/BUT3/saeia/.github/workflows/ci.yml) automatise les vérifications qualité à chaque `push` et `pull_request` :
 
@@ -393,7 +383,7 @@ jobs:
         run: python -m compileall -q src
 
       - name: Vérifier l'import du client Ollama
-        run: python -c "from src.suivi_pret.ollama_client.vlm import OllamaWrapper; print(OllamaWrapper.__name__)"
+        run: python -c "from src.suivi_pret.ollama_client.vlm import OllamaVLM; print(OllamaVLM.__name__)"
 
       - name: Exécuter les tests unitaires
         run: python -m unittest discover -s tests -v
@@ -416,8 +406,8 @@ La configuration est centralisée dans le fichier `.env` (dérivé de `.env.exam
 | `POSTGRES_DB` | `sae_db` | Nom de la base de données |
 | `POSTGRES_HOST` | `pg` (Docker) / `localhost` | Hôte du serveur de base de données |
 | `POSTGRES_PORT` | `5432` | Port de connexion PostgreSQL |
-| `OLLAMA_HOST` | `http://host.docker.internal:11434` | URL d'accès à l'API Ollama |
-| `OLLAMA_VLM_MODEL` | `qwen2.5-vl:7b` ou `qwen3-vl:8b` | Identifiant du modèle multimodal |
+| `OLLAMA_HOST` | obligatoire | URL d'accès à l'API Ollama |
+| `OLLAMA_VLM_MODEL` | obligatoire | Identifiant du modèle multimodal |
 
 ---
 
@@ -463,6 +453,16 @@ services:
 
 volumes:
   pg_data:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  pg_data:
+  ollama_data:
 ```
 
 > [!NOTE]
@@ -512,6 +512,10 @@ Les principaux composants comportent une documentation in-code (docstrings) norm
   Insère ou remplace les clichés de restitution associés au matériel avec le discriminateur `est_avant = FALSE`.
 - `valider_reponse_json(reponse: str) -> dict` :
   Valide rigoureusement le JSON émis par Ollama (présence de `zones`, conformité des `bbox` positives et ordonnées, contrôle des libellés de gravité).
-- `OllamaWrapper.compare_images(prompt, before_image, after_image, model) -> OllamaGenerateResult` :
-  Encode les clichés en base64, assemble la requête multipart/JSON vers l'API Ollama et retourne le résultat textuel de comparaison.
-
+- `OllamaVLM.compare_images(model, prompt, image_before, image_after) -> OllamaGenerateResult` :
+  Encode les clichés en base64, envoie la requête JSON à l'API Ollama et
+  retourne le résultat textuel de comparaison.
+- `SuiviPretService.enregistrer_rapport(...)` et
+  `SuiviPretService.enregistrer_validation_humaine(...)` :
+  enregistrent respectivement le rapport IA ou humain et la décision du
+  gestionnaire.

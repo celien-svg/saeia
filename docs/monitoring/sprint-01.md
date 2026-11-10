@@ -6,11 +6,11 @@ premier rapport lisible dans l'interface.
 
 User Stories :
 - **US-01** *(Terminé)* : En tant que gestionnaire, je veux enregistrer les photos prises au retour afin de les associer à l'ordinateur contrôlé.
-- **US-02** *(En cours)* : En tant que gestionnaire, je veux lancer l'analyse depuis l'interface afin de comparer les photos de référence et de restitution.
+- **US-02** *(Terminé)* : En tant que gestionnaire, je veux lancer l'analyse depuis l'interface afin de comparer les photos de référence et de restitution.
 - **US-03** *(Terminé)* : En tant que gestionnaire, je veux valider strictement la réponse JSON du modèle afin de détecter les réponses invalides ou incomplètes.
-- **US-04** *(En cours)* : En tant que gestionnaire, je veux afficher les images avant et apres côte à côte afin de faciliter la comparaison visuelle.
-- **US-06** *(En cours)* : En tant que gestionnaire, je veux générer un rapport final regroupant les résultats de l'analyse afin de conserver une trace du contrôle.
-- **US-09** *(En cours)* : En tant que développeur, je veux documenter l'installation, la configuration et le parcours complet afin de rendre le prototype utilisable par l'équipe.
+- **US-04** *(Terminé)* : En tant que gestionnaire, je veux afficher les images avant et apres côte à côte afin de faciliter la comparaison visuelle.
+- **US-06** *(Terminé)* : En tant que gestionnaire, je veux générer un rapport final regroupant les résultats de l'analyse afin de conserver une trace du contrôle.
+- **US-09** *(Terminé)* : En tant que développeur, je veux documenter l'installation, la configuration et le parcours complet afin de rendre le prototype utilisable par l'équipe.
 - **US-10** *(Terminé)* : En tant que gestionnaire, je veux modifier un matériel existant afin de corriger ses informations et de conserver ou remplacer ses photos.
 
 Fonctionnalités réalisées :
@@ -23,14 +23,10 @@ Fonctionnalités réalisées :
 - Conversion du résultat JSON en texte lisible pour préparer l'affichage dans Gradio.
 - Création et modification d'un matériel avec normalisation des champs et traitement des photos.
 
-Travail restant :
-- Connecter le parcours complet de comparaison aux composants Gradio.
-- Afficher les six angles avant/apres et les résultats associés dans une vue unique.
-- Afficher les anomalies, leur gravité et leurs bounding boxes dans l'interface.
-- Regrouper les résultats de toutes les zones dans un rapport final structuré.
-- Distinguer clairement le résultat de l'IA de la validation humaine.
-- Enregistrer le rapport et permettre sa consultation ultérieure.
-- Ajouter des tests d'intégration avec des réponses VLM simulées et documenter une démonstration complète.
+Travail restant au terme du sprint :
+- Ajouter un test d'intégration avec PostgreSQL et Ollama réels.
+- Ajouter un test navigateur du parcours complet.
+- Finaliser un jeu de données de démonstration versionné.
 
 Livrables / DoR & DoD :
 - DoR (Definition of Ready) :

@@ -49,7 +49,10 @@ L'analyse statistique des causes de dysfonctionnements dans les projets informat
 | **Erreurs liées aux composants externes** | **38 %** | Validation stricte des réponses JSON du modèle Ollama, gestion fine des exceptions PostgreSQL (`psycopg`), résilience réseau. |
 
 > [!NOTE]
-> Les composants externes (base PostgreSQL, serveur Ollama VLM) représentant 38 % des défaillances potentielles, le projet isole ces briques derrière des abstractions (`Storage` abstrait, `OllamaWrapper`, gestionnaire d'exceptions dédié `StorageError` / `OllamaError`).
+> Les composants externes (base PostgreSQL, serveur Ollama VLM) représentant une
+> source importante de défaillances potentielles, le projet isole ces briques
+> derrière des abstractions (`Storage` abstrait, `OllamaVLM`, gestionnaires
+> `StorageError` et `OllamaError`).
 
 ---
 
@@ -208,7 +211,10 @@ graph LR
 
 #### Mise en pratique dans le projet
 Le projet a appliqué le TDD à travers le développement en binôme (*Pair-Programming* avec rôles alternés de Pilote et Co-pilote) sur les modules critiques :
-- **Validation du service (`tests/test_service_materiels.py`)** : Tests isolés à l'aide d'un double de test mémoire (`StockageMemoire`), permettant de vérifier la normalisation des chaînes, le redimensionnement d'images et le filtrage des champs obligatoires sans dépendance à une base PostgreSQL.
+- **Validation du service (`tests/test_service_materiels.py`)** : Tests
+  isolés à l'aide d'un double de stockage en mémoire, permettant de vérifier la
+  normalisation des chaînes, le redimensionnement d'images et le filtrage des
+  champs obligatoires sans dépendance à PostgreSQL.
 - **Validation du parseur IA (`tests/test_ia_comparaison.py`)** : Tests d'acceptation et de rejet systématique des formats JSON déviants (absence de racine, clé manquante, gravité inconnue, boîte englobante mal formée).
 
 ---
@@ -341,4 +347,3 @@ L'alignement méthodologique avec le cours R5-08A se traduit par des résultats 
 2. **Adéquation utilisateur** : Note de qualité d'usage de **4.47 / 5**, validant l'ergonomie, la clarté et la protection contre les erreurs d'inadvertance.
 3. **Sécurité et intégrité** : Élimination des failles XSS, gestion stricte des contraintes d'unicité et de clé étrangère PostgreSQL, et vérification rigoureuse des sorties d'IA.
 4. **Traçabilité totale** : Couplage direct entre les User Stories, les scénarios BDD Gherkin et les modules applicatifs.
-
