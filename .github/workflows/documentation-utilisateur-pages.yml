@@ -1,0 +1,58 @@
+name: Publier la documentation utilisateur
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/documentation_utilisateur.md"
+      - "docs/img/**"
+      - ".github/workflows/documentation-utilisateur-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Préparer le site
+        run: |
+          mkdir -p site/img
+          cp docs/documentation_utilisateur.md site/index.md
+          cp docs/img/* site/img/
+
+      - name: Configurer GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Construire le site
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: site
+          destination: ./_site
+
+      - name: Préparer l'artefact Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Publier sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
