@@ -21,6 +21,8 @@ from .storage import (
 
 ETATS = ["OK", "Réservé", "En réparation", "Endommagé", "Disparu"]
 
+URL_DOC_UTILISATEUR = "https://celien-svg.github.io/saeia/"
+
 logger = logging.getLogger("gestion_materiels")
 logging.basicConfig(level=logging.INFO)
 
@@ -32,6 +34,21 @@ def echapper(texte):
     if texte is None:
         return ""
     return html.escape(str(texte))
+
+
+CLASSES_ETATS = {
+    "OK": "etat-ok",
+    "Réservé": "etat-reserve",
+    "En réparation": "etat-reparation",
+    "Endommagé": "etat-endommage",
+    "Disparu": "etat-disparu",
+}
+
+
+def badge_etat(etat):
+    """Affiche l'état d'un ordinateur sous forme de pastille colorée."""
+    classe = CLASSES_ETATS.get(etat, "")
+    return f'<span class="badge-etat {classe}">{echapper(etat)}</span>'
 
 
 def recuperer_materiels():
@@ -331,14 +348,6 @@ def retour_liste_depuis_analyse():
     )
 
 
-def ouvrir_liste():
-    return (gr.update(visible=False), gr.update(visible=True))
-
-
-def retour_accueil():
-    return (gr.update(visible=True), gr.update(visible=False))
-
-
 def ouvrir_formulaire():
     champs = list(vider_formulaire())
     champs[8] = gr.update(choices=construire_choix_entites(), value=None)
@@ -518,30 +527,369 @@ def enregistrer_modification(
     return (gr.update(visible=True), gr.update(visible=False), version + 1, *vider_formulaire_modif())
 
 
+# ── Design ─────────────────────────────────────────────────────────────────
+
+THEME = gr.themes.Base(
+    primary_hue=gr.themes.colors.indigo,
+    secondary_hue=gr.themes.colors.slate,
+    neutral_hue=gr.themes.colors.slate,
+    radius_size=gr.themes.sizes.radius_md,
+    spacing_size=gr.themes.sizes.spacing_md,
+    text_size=gr.themes.sizes.text_md,
+    font=["Inter", "Segoe UI", "ui-sans-serif", "system-ui", "sans-serif"],
+    font_mono=["JetBrains Mono", "Consolas", "ui-monospace", "monospace"],
+).set(
+    body_background_fill="*neutral_100",
+    body_background_fill_dark="*neutral_950",
+    background_fill_primary="white",
+    background_fill_primary_dark="*neutral_900",
+    background_fill_secondary="*neutral_50",
+    background_fill_secondary_dark="*neutral_800",
+    block_background_fill="white",
+    block_background_fill_dark="*neutral_900",
+    block_border_color="*neutral_200",
+    block_border_color_dark="*neutral_700",
+    block_border_width="1px",
+    block_radius="*radius_lg",
+    block_shadow="none",
+    block_label_background_fill="*neutral_50",
+    block_label_background_fill_dark="*neutral_800",
+    block_label_text_color="*neutral_600",
+    block_label_text_color_dark="*neutral_300",
+    block_title_text_weight="600",
+    input_background_fill="*neutral_50",
+    input_background_fill_dark="*neutral_800",
+    input_border_color="*neutral_200",
+    input_border_color_dark="*neutral_700",
+    input_border_color_focus="*primary_400",
+    input_border_color_focus_dark="*primary_500",
+    input_shadow_focus="0 0 0 3px rgba(99, 102, 241, 0.18)",
+    input_shadow_focus_dark="0 0 0 3px rgba(129, 140, 248, 0.25)",
+    button_border_width="1px",
+    button_large_radius="*radius_md",
+    button_small_radius="*radius_md",
+    button_large_padding="10px 20px",
+    button_large_text_weight="600",
+    button_small_text_weight="600",
+    button_transition="background-color .15s ease, border-color .15s ease, box-shadow .15s ease",
+    button_primary_background_fill="*primary_600",
+    button_primary_background_fill_hover="*primary_700",
+    button_primary_background_fill_dark="*primary_500",
+    button_primary_background_fill_hover_dark="*primary_400",
+    button_primary_text_color="white",
+    button_primary_text_color_dark="white",
+    button_primary_border_color="*primary_600",
+    button_primary_border_color_dark="*primary_500",
+    button_primary_shadow="0 1px 2px rgba(67, 56, 202, 0.25)",
+    button_secondary_background_fill="white",
+    button_secondary_background_fill_hover="*neutral_100",
+    button_secondary_background_fill_dark="*neutral_800",
+    button_secondary_background_fill_hover_dark="*neutral_700",
+    button_secondary_text_color="*neutral_800",
+    button_secondary_text_color_dark="*neutral_100",
+    button_secondary_border_color="*neutral_300",
+    button_secondary_border_color_dark="*neutral_600",
+    button_cancel_background_fill="#fef2f2",
+    button_cancel_background_fill_hover="#fee2e2",
+    button_cancel_background_fill_dark="#450a0a",
+    button_cancel_background_fill_hover_dark="#7f1d1d",
+    button_cancel_text_color="#b91c1c",
+    button_cancel_text_color_dark="#fecaca",
+    button_cancel_border_color="#fecaca",
+    button_cancel_border_color_dark="#7f1d1d",
+)
+
+
 CSS = """
+/* ── Cadre général ──────────────────────────────────────────────────────── */
 .gradio-container {
     max-width: none !important;
-    background: #202020 !important;
-    padding: 12px !important;
+    padding: clamp(8px, 2vw, 24px) !important;
 }
 
 #page {
-    min-height: 92vh;
-    background: white;
-    padding: 35px 12%;
+    max-width: 1180px;
+    min-height: 88vh;
+    margin: 0 auto;
+    padding: clamp(18px, 3vw, 36px) clamp(14px, 4vw, 48px);
+    background: var(--background-fill-primary);
+    border: 1px solid var(--border-color-primary);
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
+    gap: 20px;
 }
 
-#accueil {
-    min-height: 75vh;
+#page h2 {
+    margin: 0 0 4px !important;
+    font-size: clamp(1.35rem, 2.4vw, 1.7rem) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+}
+
+#page h3 {
+    margin: 8px 0 0 !important;
+    font-size: 1.05rem !important;
+    font-weight: 650 !important;
+}
+
+.page-liste-actions button,
+.actions-fiche button,
+.actions-analyse button {
+    white-space: nowrap;
+}
+
+/* ── En-tête de l'application ───────────────────────────────────────────── */
+#entete-app {
+    padding: 0 0 16px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--border-color-primary) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+}
+
+#entete-app .marque {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
 }
 
-#accueil button {
-    max-width: 320px;
+#entete-app .logo {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 10px;
+    background: var(--primary-600);
+    color: white;
+    font-size: 20px;
 }
 
+#entete-app .nom-app {
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--body-text-color);
+}
+
+#entete-app .sous-titre {
+    font-size: 0.85rem;
+    color: var(--body-text-color-subdued);
+}
+
+/* ── Pied de page ───────────────────────────────────────────────────────── */
+#pied-de-page {
+    max-width: 1180px;
+    margin: 4px auto 0;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    text-align: center;
+}
+
+#pied-de-page a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--primary-600);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#pied-de-page a:hover {
+    background: var(--background-fill-primary);
+    text-decoration: underline;
+}
+
+.dark #pied-de-page a {
+    color: var(--primary-300);
+}
+
+/* ── Titres de page ─────────────────────────────────────────────────────── */
+#titre,
+.fiche-materiel .titre-fiche {
+    text-align: left;
+}
+
+.sous-titre-page p {
+    margin: 0 !important;
+    color: var(--body-text-color-subdued) !important;
+    font-size: 0.9rem;
+}
+
+/* ── Liste des ordinateurs ──────────────────────────────────────────────── */
+.page-liste-actions {
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.page-liste-actions > * {
+    min-width: 0;
+}
+
+.page-liste-actions > button {
+    flex: 0 1 auto !important;
+    min-width: 160px !important;
+}
+
+#liste {
+    flex: none !important;
+    height: auto !important;
+    margin-top: 4px;
+    padding: 0;
+    overflow: hidden;
+    gap: 0 !important;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 12px;
+    background: var(--background-fill-primary);
+}
+
+#liste .entetes-ordinateurs,
+#liste .ligne-ordinateur {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) repeat(2, minmax(0, 2fr)) repeat(4, minmax(0, 1fr));
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+}
+
+#liste .entetes-ordinateurs > *,
+#liste .ligne-ordinateur > * {
+    min-width: 0;
+}
+
+.entetes-ordinateurs {
+    min-height: 42px;
+    background: var(--background-fill-secondary);
+    border-bottom: 1px solid var(--border-color-primary);
+}
+
+.entetes-ordinateurs p {
+    margin: 0 !important;
+    color: var(--body-text-color-subdued) !important;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ligne-ordinateur {
+    min-height: 56px;
+    border-bottom: 1px solid var(--border-color-primary);
+    transition: background-color .12s ease;
+}
+
+#liste .ligne-ordinateur:last-child {
+    border-bottom: 0;
+}
+
+.ligne-ordinateur:hover {
+    background: var(--background-fill-secondary);
+}
+
+#liste .entetes-ordinateurs > *:nth-child(-n + 3) p,
+#liste .ligne-ordinateur > *:nth-child(-n + 3) p {
+    text-align: left;
+}
+
+#liste .entetes-ordinateurs > *:nth-child(n + 4) p {
+    text-align: center;
+}
+
+.ligne-ordinateur p {
+    margin: 0 !important;
+    color: var(--body-text-color) !important;
+    font-size: 14px;
+}
+
+.ligne-ordinateur > *:first-child p {
+    font-weight: 600;
+}
+
+.ligne-ordinateur button {
+    min-height: 32px !important;
+    padding: 4px 10px !important;
+    font-size: 13px !important;
+    white-space: nowrap;
+    box-shadow: none !important;
+}
+
+.ligne-ordinateur button.secondary {
+    border-color: var(--border-color-primary) !important;
+    background: var(--background-fill-primary) !important;
+}
+
+.ligne-ordinateur button.secondary:hover {
+    border-color: var(--primary-400) !important;
+    color: var(--primary-600) !important;
+}
+
+.dark .ligne-ordinateur button.secondary:hover {
+    color: var(--primary-300) !important;
+}
+
+.liste-vide {
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--body-text-color-subdued);
+}
+
+/* Pastilles d'état */
+.badge-etat {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    background: #e2e8f0;
+    color: #334155;
+}
+.badge-etat.etat-ok { background: #dcfce7; color: #166534; }
+.badge-etat.etat-reserve { background: #e0e7ff; color: #3730a3; }
+.badge-etat.etat-reparation { background: #fef3c7; color: #92400e; }
+.badge-etat.etat-endommage { background: #fee2e2; color: #991b1b; }
+.badge-etat.etat-disparu { background: #f1f5f9; color: #475569; border: 1px dashed #94a3b8; }
+
+.dark .badge-etat { background: #334155; color: #e2e8f0; }
+.dark .badge-etat.etat-ok { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+.dark .badge-etat.etat-reserve { background: rgba(99, 102, 241, 0.22); color: #c7d2fe; }
+.dark .badge-etat.etat-reparation { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+.dark .badge-etat.etat-endommage { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+.dark .badge-etat.etat-disparu { background: transparent; color: #cbd5e1; border-color: #64748b; }
+
+/* ── Fiches (consultation, ajout, modification) ─────────────────────────── */
+.fiche-materiel {
+    gap: 16px;
+}
+
+.fiche-materiel .actions-fiche {
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color-primary);
+}
+
+.fiche-materiel .actions-fiche button {
+    flex: 0 1 auto !important;
+    min-width: 180px !important;
+    max-width: 280px;
+}
+
+.section-photos {
+    margin-top: 12px;
+}
+
+/* ── Photos ─────────────────────────────────────────────────────────────── */
 #page .image-container img {
     max-height: 420px !important;
     object-fit: contain !important;
@@ -549,6 +897,10 @@ CSS = """
 
 #page .photo-exemple img {
     max-height: 180px !important;
+}
+
+#page .photo-exemple {
+    opacity: 0.92;
 }
 
 .grille-photos {
@@ -566,6 +918,10 @@ CSS = """
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 12px;
+    background: var(--background-fill-secondary);
 }
 
 .ligne-photo > .gradio-image {
@@ -577,134 +933,79 @@ CSS = """
     width: 100% !important;
 }
 
-.ligne-analyse {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: start;
-    gap: 16px;
-}
-
+/* ── Analyse ────────────────────────────────────────────────────────────── */
 .entetes-analyse {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
+    padding: 0 12px;
 }
 
 .entetes-analyse > * {
     min-width: 0;
 }
 
+.entetes-analyse h3 {
+    margin: 0 !important;
+    color: var(--body-text-color-subdued) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ligne-analyse {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 12px;
+    background: var(--background-fill-secondary);
+}
+
 .ligne-analyse > .gradio-image {
     min-width: 0;
 }
 
-.fiche-materiel .titre-fiche,
-.fiche-materiel label,
-.fiche-materiel input,
-.fiche-materiel textarea {
-    text-align: center;
+.actions-analyse {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 0;
+    background: var(--background-fill-primary);
+    border-top: 1px solid var(--border-color-primary);
 }
 
-.fiche-materiel .actions-fiche {
-    justify-content: space-around;
-    border-top: 1px solid #d0d0d0;
-    padding-top: 16px;
-}
-
-.fiche-materiel .actions-fiche button {
-    max-width: 280px;
-}
-
-#titre {
-    text-align: center;
-    margin-bottom: 25px;
-}
-
-#liste {
-    margin-top: 24px;
-    padding: 13px clamp(10px, 3vw, 25px);
-    background: #dddddd;
-    overflow: hidden;
-}
-
-.ligne-ordinateur {
-    align-items: center;
-    min-height: 38px;
-    margin-bottom: 8px;
-    padding: 0 18px;
-    background: #646464;
-}
-
-.entetes-ordinateurs {
-    align-items: center;
-    min-height: 32px;
-    padding: 0 18px;
-    background: #dddddd;
-}
-
-.entetes-ordinateurs p {
-    color: #202020 !important;
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0 !important;
-}
-
-#liste .entetes-ordinateurs,
-#liste .ligne-ordinateur {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) repeat(2, minmax(0, 2fr)) repeat(4, minmax(0, 1fr));
-}
-
-#liste .entetes-ordinateurs > *,
-#liste .ligne-ordinateur > * {
-    min-width: 0;
-}
-
-#liste .entetes-ordinateurs p,
-#liste .ligne-ordinateur p {
-    text-align: center;
-}
-
-.ligne-ordinateur p {
-    color: white !important;
-    font-size: 13px;
-    margin: 0 !important;
-}
-
-.ligne-ordinateur button {
-    min-height: 30px !important;
-    border: 0 !important;
-    background: transparent !important;
-    color: white !important;
-    box-shadow: none !important;
-}
-
-.ligne-ordinateur button:hover {
-    background: #4d4d4d !important;
-}
-
-.page-liste-actions {
-    align-items: center;
-    justify-content: space-between;
-}
-
-.page-liste-actions > * {
-    min-width: 0;
+.actions-analyse > button {
+    flex: 1 1 160px !important;
 }
 
 #zone-ia {
-    margin-top: 16px;
-    border: 1px solid #d0d0d0;
-    border-radius: 8px;
-    padding: 12px;
-    background: #f8f8f8;
+    margin-top: 4px;
+    padding: 20px;
+    gap: 14px;
+    border: 1px solid var(--border-color-primary);
+    border-left: 4px solid var(--primary-500);
+    border-radius: 12px;
+    background: var(--background-fill-secondary);
 }
 
-@media (max-width: 900px) {
-    #page {
-        padding: 24px 5%;
-    }
+.historique-rapports:not(:empty) h4 {
+    margin: 14px 0 6px !important;
+    font-size: 0.95rem !important;
+    color: var(--primary-600) !important;
+}
 
+.dark .historique-rapports h4 {
+    color: var(--primary-300) !important;
+}
+
+/* ── Adaptations écrans moyens ──────────────────────────────────────────── */
+@media (max-width: 900px) {
     .ligne-analyse {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -721,24 +1022,32 @@ CSS = """
         display: none;
     }
 
+    #liste {
+        border: 0;
+        background: transparent;
+        overflow: visible;
+    }
+
     #liste .entetes-ordinateurs {
         display: none;
     }
 
     #liste .ligne-ordinateur {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 4px 8px;
+        gap: 6px 8px;
         margin-bottom: 12px;
-        padding: 10px;
-        border-radius: 6px;
+        padding: 14px;
+        border: 1px solid var(--border-color-primary);
+        border-radius: 12px;
+        background: var(--background-fill-primary);
+    }
+
+    #liste .ligne-ordinateur:last-child {
+        border-bottom: 1px solid var(--border-color-primary);
     }
 
     #liste .ligne-ordinateur > *:nth-child(-n + 3) {
         grid-column: 1 / -1;
-    }
-
-    #liste .ligne-ordinateur > *:nth-child(-n + 3) p {
-        text-align: left;
     }
 
     #liste .ligne-ordinateur > *:nth-child(1)::before,
@@ -746,9 +1055,10 @@ CSS = """
     #liste .ligne-ordinateur > *:nth-child(3)::before {
         display: block;
         margin-bottom: 2px;
-        color: #d7d7d7;
+        color: var(--body-text-color-subdued);
         font-size: 11px;
         font-weight: 700;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
     }
 
@@ -771,19 +1081,21 @@ CSS = """
     }
 }
 
+/* ── Adaptations téléphones ─────────────────────────────────────────────── */
 @media (max-width: 600px) {
     #page {
-        padding: 16px 3%;
+        border-radius: 12px;
     }
 
     .grille-photos,
     .ligne-photo,
-    .ligne-analyse {
+    .ligne-analyse,
+    .entetes-analyse {
         grid-template-columns: minmax(0, 1fr);
     }
 
     .entetes-analyse {
-        grid-template-columns: minmax(0, 1fr);
+        display: none !important;
     }
 
     .page-liste-actions {
@@ -791,21 +1103,21 @@ CSS = """
     }
 
     .page-liste-actions > button {
-        flex: 1 1 140px;
+        flex: 1 1 140px !important;
+        min-width: 0 !important;
     }
 
-    #liste {
-        margin-top: 14px;
-        padding: 10px;
-    }
-
-    #liste .ligne-ordinateur {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        padding: 8px;
+    .fiche-materiel .actions-fiche button {
+        flex: 1 1 140px !important;
+        min-width: 0 !important;
     }
 
     #liste .ligne-ordinateur > *:nth-child(-n + 3) {
         overflow-wrap: anywhere;
+    }
+
+    .actions-analyse {
+        position: static;
     }
 }
 """
@@ -819,12 +1131,18 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
     with gr.Column(elem_id="page"):
 
-        # ── Page d'accueil ───────────────────────────────────────────────────
-        with gr.Column(elem_id="accueil") as page_accueil:
-            bouton_voir_liste = gr.Button(
-                "Voir la liste des ordinateurs",
-                variant="primary",
-            )
+        gr.HTML(
+            """
+            <div class="marque">
+                <div class="logo" aria-hidden="true">💻</div>
+                <div>
+                    <div class="nom-app">Gestion des ordinateurs</div>
+                    <div class="sous-titre">Suivi des prêts et contrôle de l'état par IA</div>
+                </div>
+            </div>
+            """,
+            elem_id="entete-app",
+        )
 
         # ── Page d'analyse ───────────────────────────────────────────────────
         with gr.Column(visible=False) as page_analyse:
@@ -859,7 +1177,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
 
             statut_photos_analyse = gr.Markdown()
 
-            with gr.Row():
+            with gr.Row(elem_classes="actions-analyse"):
                 bouton_ajouter_photos = gr.Button("Ajouter les photos", variant="primary")
                 bouton_lancer_analyse = gr.Button("Lancer l'analyse", variant="primary")
                 bouton_liste_rapports = gr.Button("Liste des rapports")
@@ -874,7 +1192,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     lines=6,
                     placeholder="La réponse de l'IA apparaîtra ici après l'analyse des photos avant/après...",
                 )
-                liste_rapports = gr.Markdown()
+                liste_rapports = gr.Markdown(elem_classes="historique-rapports")
 
                 gr.Markdown(
                     "### Validation humaine\n"
@@ -909,7 +1227,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     label=labels_consultation[cle], interactive=False, lines=3,
                 )
             champs_consultation = [champs_par_cle[cle] for cle, _ in CHAMPS_CONSULTATION]
-            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            gr.Markdown(
+                "### Photos de référence (avant prêt)",
+                elem_classes=["titre-fiche", "section-photos"],
+            )
             photos_consultation = []
             for debut in range(0, len(TYPES_PHOTOS), 2):
                 with gr.Row():
@@ -923,13 +1244,12 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                 bouton_retour_consultation = gr.Button("Retour à la liste")
 
         # ── Page de liste ────────────────────────────────────────────────────
-        with gr.Column(visible=False) as page_liste:
+        with gr.Column(visible=True) as page_liste:
             gr.Markdown("## Liste des ordinateurs", elem_id="titre")
 
             with gr.Row(elem_classes="page-liste-actions"):
-                bouton_ajouter = gr.Button("Ajouter un ordinateur")
+                bouton_ajouter = gr.Button("Ajouter un ordinateur", variant="primary")
                 gr.Column(elem_classes="spacer", scale=3)
-                bouton_retour_accueil = gr.Button("Accueil")
 
             @gr.render(inputs=actualisation)
             def afficher_liste(_):
@@ -948,7 +1268,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     if not materiels:
                         gr.Markdown(
                             """
-                            <div style="text-align: center; padding: 25px;">
+                            <div class="liste-vide">
                                 Aucun ordinateur enregistré pour le moment.
                             </div>
                             """
@@ -962,7 +1282,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                             key=f"materiel-{identifiant}",
                         ):
                             gr.Markdown(echapper(materiel["nom"]), scale=3)
-                            gr.Markdown(echapper(materiel["etat"]), scale=2)
+                            gr.Markdown(badge_etat(materiel["etat"]), scale=2)
                             gr.Markdown(echapper(materiel["localisation"]), scale=2)
 
                             bouton_voir = gr.Button(
@@ -1055,7 +1375,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             remarque = gr.Textbox(label="Remarque", lines=3)
             descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
 
-            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            gr.Markdown(
+                "### Photos de référence (avant prêt)",
+                elem_classes=["titre-fiche", "section-photos"],
+            )
             photos_ajout = []
             for debut in range(0, len(TYPES_PHOTOS), 2):
                 with gr.Row(elem_classes="grille-photos"):
@@ -1085,7 +1408,10 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             modif_remarque = gr.Textbox(label="Remarque", lines=3)
             modif_descriptif = gr.Textbox(label="Descriptif du matériel", lines=3)
 
-            gr.Markdown("### Photos de référence (avant prêt)", elem_classes="titre-fiche")
+            gr.Markdown(
+                "### Photos de référence (avant prêt)",
+                elem_classes=["titre-fiche", "section-photos"],
+            )
             gr.Markdown("*Laissez les photos vides pour conserver les photos actuelles.*")
             photos_modification = []
             for debut in range(0, len(TYPES_PHOTOS), 2):
@@ -1099,6 +1425,16 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             with gr.Row(elem_classes="actions-fiche"):
                 bouton_annuler_modif = gr.Button("Annuler", variant="stop")
                 bouton_enregistrer_modif = gr.Button("Enregistrer les modifications", variant="primary")
+
+    # ── Pied de page ─────────────────────────────────────────────────────────
+    gr.HTML(
+        f"""
+        <a href="{URL_DOC_UTILISATEUR}" target="_blank" rel="noopener noreferrer">
+            📖 Documentation utilisateur
+        </a>
+        """,
+        elem_id="pied-de-page",
+    )
 
 
     # ── Câblage des événements ───────────────────────────────────────────────
@@ -1115,12 +1451,6 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         modif_entite_id, modif_image, modif_image2, modif_image3,
         modif_image4, modif_image5, modif_image6,
     ]
-
-    # Accueil -> liste
-    bouton_voir_liste.click(fn=ouvrir_liste, inputs=None, outputs=[page_accueil, page_liste])
-
-    # Liste -> accueil
-    bouton_retour_accueil.click(fn=retour_accueil, inputs=None, outputs=[page_accueil, page_liste])
 
     # Consultation -> liste
     bouton_retour_consultation.click(
@@ -1209,7 +1539,7 @@ def lancer_application():
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
-        theme=gr.Theme.from_hub("harsh8001/skymist"),
+        theme=THEME,
         css=CSS,
         show_error=False,
     )
