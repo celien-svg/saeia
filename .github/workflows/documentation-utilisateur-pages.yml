@@ -5,8 +5,9 @@ on:
     branches:
       - main
     paths:
-      - "docs/documentation_utilisateur.md"
-      - "docs/img/**"
+      - "docs/utilisateur/**"
+      - "docs/requirements.txt"
+      - "mkdocs.yml"
       - ".github/workflows/documentation-utilisateur-pages.yml"
   workflow_dispatch:
 
@@ -26,20 +27,19 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Préparer le site
-        run: |
-          mkdir -p site/img
-          cp docs/documentation_utilisateur.md site/index.md
-          cp docs/img/* site/img/
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer MkDocs
+        run: pip install -r docs/requirements.txt
 
       - name: Configurer GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Construire le site
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: site
-          destination: ./_site
+        run: mkdocs build --strict --site-dir ./_site
 
       - name: Préparer l'artefact Pages
         uses: actions/upload-pages-artifact@v3
