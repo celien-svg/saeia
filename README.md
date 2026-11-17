@@ -16,7 +16,7 @@ La documentation complète du projet est rédigée selon le cours **R5-08A – Q
 - 📚 [**Portail & Sommaire Documentaire**](docs/README.md)
 - 🎯 [**Qualité Logicielle (ISO/IEC 25010) & Inspections (TDD / BDD Gherkin)**](docs/qualite_developpement.md)
 - ⚙️ [**Documentation Technique (Architecture, Modélisation, Build & Déploiement)**](docs/documentation_technique.md)
-- 📖 [**Documentation Utilisateur (Manuel pas à pas, Tutoriel 5 min & FAQ)**](docs/documentation_utilisateur.md)
+- 📖 [**Documentation Utilisateur (Manuel pas à pas, Tutoriel 5 min & FAQ)**](docs/utilisateur/index.md)
 
 ## Objectif
 

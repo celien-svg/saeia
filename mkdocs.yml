@@ -1,0 +1,61 @@
+site_name: SAEIA — Guide utilisateur
+site_description: Suivi de prêt d'ordinateurs avec analyse visuelle par IA
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, ""]
+repo_url: https://github.com/celien-svg/saeia
+edit_uri: edit/main/docs/utilisateur/
+docs_dir: docs/utilisateur
+
+theme:
+  name: material
+  language: fr
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - search.highlight
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Passer en mode sombre
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Passer en mode clair
+
+nav:
+  - Accueil: index.md
+  - Prise en main:
+      - Démarrage en 5 minutes: demarrage-rapide.md
+      - Comprendre le fonctionnement: fonctionnement.md
+  - Utiliser l'application:
+      - Ouvrir l'application: utilisation/ouvrir.md
+      - Consulter le parc: utilisation/consulter-parc.md
+      - Ajouter un ordinateur: utilisation/ajouter-ordinateur.md
+      - Enregistrer une restitution: utilisation/restitution.md
+      - Lancer et lire une analyse: utilisation/analyse.md
+      - Rapports et historique: utilisation/historique.md
+      - Modifier ou supprimer une fiche: utilisation/modifier-supprimer.md
+  - Prendre de bonnes photos: bonnes-photos.md
+  - FAQ et dépannage: faq.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search:
+      lang: fr

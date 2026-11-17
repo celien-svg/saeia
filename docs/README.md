@@ -8,7 +8,7 @@ comparaison d'images par un modèle de vision Ollama.
 | Document | Contenu |
 | --- | --- |
 | [Documentation technique](./documentation_technique.md) | Architecture, base de données, installation, exploitation et API interne |
-| [Documentation utilisateur](./documentation_utilisateur.md) | Utilisation de l'interface Gradio et procédure avant/après |
+| [Documentation utilisateur](./utilisateur/index.md) | Utilisation de l'interface Gradio et procédure avant/après (publiée sur Read the Docs via `mkdocs.yml`) |
 | [Qualité de développement](./qualite_developpement.md) | Qualité logicielle, tests unitaires, validation JSON et scénarios BDD |
 | [Suivi sprint 0](./monitoring/sprint-00.md) | Mise en place du socle du projet |
 | [Suivi sprint 1](./monitoring/sprint-01.md) | Photos de restitution et comparaison IA |
