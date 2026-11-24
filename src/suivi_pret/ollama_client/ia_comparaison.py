@@ -1,6 +1,5 @@
 import json
 import asyncio
-import colorsys
 import math
 from io import BytesIO
 from pathlib import Path
@@ -192,14 +191,21 @@ async def analyser_materiel(
     type_photo: str | None = None,
     *,
     storage: Storage,
+    photos_comparaison: list[dict[str, Any]] | None = None,
 ) -> str:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
     settings = get_settings()
-    # Le stockage ouvre et ferme sa connexion dans le thread de travail.
-    photos = await asyncio.to_thread(
-        storage.recuperer_photos_comparaison, materiel_id, type_photo,
-    )
-    categories = construire_categories(photos)
+    if photos_comparaison is None:
+        # Le stockage ouvre et ferme sa connexion dans le thread de travail.
+        photos_comparaison = await asyncio.to_thread(
+            storage.recuperer_photos_comparaison, materiel_id, type_photo,
+        )
+    elif type_photo is not None:
+        photos_comparaison = [
+            photo for photo in photos_comparaison
+            if photo["type_photo"] == type_photo
+        ]
+    categories = construire_categories(photos_comparaison)
     if not categories:
         return "Aucune photo commune trouvée pour ce matériel."
 
@@ -226,7 +232,7 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
 
     dessin = ImageDraw.Draw(image_annotee)
     largeur, hauteur = image_annotee.size
-    for index, zone in enumerate(zones):
+    for zone in zones:
         bbox = zone.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
@@ -244,12 +250,11 @@ def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
         x_max = max(0, min(x_max, largeur))
         y_max = max(0, min(y_max, hauteur))
         if x_min <= x_max and y_min <= y_max:
-            teinte = (index * 0.618033988749895) % 1
-            couleur = tuple(
-                round(composante * 255)
-                for composante in colorsys.hsv_to_rgb(teinte, 1, 1)
+            dessin.rectangle(
+                (x_min, y_min, x_max, y_max),
+                outline=(255, 0, 0),
+                width=4,
             )
-            dessin.rectangle((x_min, y_min, x_max, y_max), outline=couleur, width=4)
 
     image_sortie = BytesIO()
     image_annotee.save(image_sortie, format="PNG")

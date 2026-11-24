@@ -42,8 +42,10 @@
    **Ajouter le matériel**.
 5. À la restitution, ouvrez **Analyse**, ajoutez les photos après, puis
    cliquez sur **Lancer l'analyse**.
-6. Vérifiez le résultat, corrigez-le si nécessaire et cliquez sur
-   **Enregistrer le rapport**.
+6. Vérifiez le résultat et corrigez-le si nécessaire. L'analyse et les photos
+   utilisées sont enregistrées automatiquement dans l'historique.
+7. Cliquez sur **Enregistrer le rapport** pour conserver aussi votre version
+   corrigée, si vous avez modifié le texte.
 
 > [IMPORTANT]
 > L'IA fournit une aide à l'inspection. Elle ne décide pas à la place du
@@ -157,7 +159,15 @@ l'application :
 1. compare la photo avant avec la photo après ;
 2. vérifie le résultat avant de l'afficher ;
 3. affiche les anomalies détectées ;
-4. met en évidence les zones concernées sur les photos après.
+4. met en évidence les zones concernées sur les photos après ;
+5. enregistre le rapport avec les photos exactes utilisées ;
+6. après une analyse complète, utilise les photos après comme nouvelles
+   photos de référence pour la prochaine restitution.
+
+Les anciennes photos et celles de la restitution restent associées au rapport
+historique. Vous pouvez les revoir en sélectionnant un rapport dans
+**Photos d'un rapport précédent**. Une analyse partielle est conservée dans
+l'historique, mais ne remplace pas les photos de référence.
 
 Le rapport peut indiquer :
 
@@ -179,9 +189,11 @@ matériel** est affiché.
 Après une analyse :
 
 1. vérifiez le texte affiché dans **Réponse de l'analyse** ;
-2. corrigez le texte directement si nécessaire ;
-3. cliquez sur **Enregistrer le rapport** ;
-4. cliquez sur **Liste des rapports** pour afficher l'historique.
+2. cliquez sur **Liste des rapports** pour afficher l'historique ;
+3. sélectionnez un rapport dans **Photos d'un rapport précédent** pour revoir
+   les images utilisées à cette date ;
+4. corrigez le texte directement si nécessaire et cliquez sur
+   **Enregistrer le rapport** pour conserver une version humaine.
 
 Chaque rapport conserve son origine :
 

@@ -53,11 +53,13 @@ Le domaine métier s'articule autour de trois entités fondamentales :
 - **Entité (Organisation)** : Organisme ou département propriétaire du matériel (ex. `ULCO`).
 - **Matériel (Ordinateur)** : Machine physique soumise au prêt, caractérisée par ses attributs d'identification et son état courant.
 - **Photo_Matériel** : Cliché photographique associé à un angle de vue spécifique de la machine, qualifié par un discriminant temporel (`est_avant = TRUE` pour l'état initial, `FALSE` pour la restitution).
+- **Photo_Rapport** : Copie immuable des photos comparées, conservée avec chaque rapport pour l'historique.
 
 ```mermaid
 erDiagram
     ENTITE ||--o{ MATERIEL : "possede (1,n)"
     MATERIEL ||--o{ PHOTO_MATERIEL : "est documente par (0,12)"
+    RAPPORT_IA ||--o{ PHOTO_RAPPORT : "archive les photos utilisées"
 
     ENTITE {
         int id PK
@@ -85,13 +87,30 @@ erDiagram
         bytea image_data
         string image_type
     }
+
+    RAPPORT_IA {
+        int id_rapport PK
+        int id_materiel FK
+        text contenu
+        string origine
+        timestamp cree_le
+    }
+
+    PHOTO_RAPPORT {
+        int id_photo_rapport PK
+        int id_rapport FK
+        string type_photo
+        boolean est_avant
+        bytea image_data
+        string image_type
+    }
 ```
 
 ---
 
 ### 2.2 Modèle Logique et Schéma Relationnel PostgreSQL
 
-Le schéma physique est matérialisé par le script [`database/01-tables.sql`](file:///c:/cours/BUT3/saeia/database/01-tables.sql) :
+Le schéma physique est matérialisé par le script [`database/01-tables.sql`](../database/01-tables.sql) :
 
 ```sql
 -- 1. Énumération des états physiques d'un matériel
@@ -135,7 +154,30 @@ CREATE TABLE IF NOT EXISTS photos_materiels (
     image_type VARCHAR(50) NOT NULL,
     UNIQUE (id_materiel, type_photo, est_avant)
 );
+
+CREATE TABLE IF NOT EXISTS rapports_ia (
+    id_rapport SERIAL PRIMARY KEY,
+    id_materiel INT NOT NULL REFERENCES materiels(id_materiel) ON DELETE CASCADE,
+    contenu TEXT NOT NULL,
+    origine VARCHAR(10) NOT NULL DEFAULT 'ia',
+    cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS photos_rapports (
+    id_photo_rapport SERIAL PRIMARY KEY,
+    id_rapport INT NOT NULL REFERENCES rapports_ia(id_rapport) ON DELETE CASCADE,
+    type_photo VARCHAR(50) NOT NULL,
+    est_avant BOOLEAN NOT NULL,
+    image_data BYTEA NOT NULL,
+    image_type VARCHAR(50) NOT NULL,
+    UNIQUE (id_rapport, type_photo, est_avant)
+);
 ```
+
+> Pour une base déjà créée avec un volume PostgreSQL existant, les scripts
+> `docker-entrypoint-initdb.d` ne sont pas rejoués automatiquement. Créez la
+> table `photos_rapports` à partir de cette définition avant de déployer le
+> nouveau code.
 
 #### Points remarquables de conception BDD :
 1. **Intégrité référentielle en cascade** : `ON DELETE CASCADE` garantit qu'en cas de suppression d'un matériel, l'ensemble de ses photographies haute résolution est automatiquement purgé sans laisser d'enregistrements orphelins.

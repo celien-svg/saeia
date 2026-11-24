@@ -56,7 +56,11 @@ class SuiviPretService:
         return self.storage.recuperer_photos_analyse(int(materiel_id))
 
     def enregistrer_rapport(
-        self, materiel_id: int, contenu: str, origine: str = "ia",
+        self,
+        materiel_id: int,
+        contenu: str,
+        origine: str = "ia",
+        photos_rapport_id: int | None = None,
     ) -> int:
         """Enregistre le rapport avec sa provenance IA ou humaine."""
         contenu = (contenu or "").strip()
@@ -64,7 +68,34 @@ class SuiviPretService:
             raise ValueError("Le rapport ne peut pas être vide.")
         if origine not in {"ia", "humain"}:
             raise ValueError("La provenance du rapport est invalide.")
-        return self.storage.enregistrer_rapport(int(materiel_id), contenu, origine)
+        return self.storage.enregistrer_rapport(
+            int(materiel_id), contenu, origine, photos_rapport_id,
+        )
+
+    def enregistrer_analyse(
+        self,
+        materiel_id: int,
+        contenu: str,
+        photos: list[dict[str, Any]],
+        promouvoir_photos: bool,
+    ) -> int:
+        """Enregistre un rapport IA, ses photos et met à jour les références."""
+        contenu = (contenu or "").strip()
+        if not contenu:
+            raise ValueError("Le rapport ne peut pas être vide.")
+        return self.storage.enregistrer_analyse(
+            int(materiel_id), contenu, photos, promouvoir_photos,
+        )
+
+    def lister_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos archivées avec un rapport."""
+        return self.storage.lister_photos_rapport(int(rapport_id))
+
+    def recuperer_photos_comparaison(
+        self, materiel_id: int,
+    ) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après actuellement enregistrées."""
+        return self.storage.recuperer_photos_comparaison(int(materiel_id))
 
     def enregistrer_validation_humaine(
         self,

@@ -53,8 +53,18 @@ class PostgresAnalyseTest(TestCase):
                     self.storage.recuperer_photos_comparaison(12, filtre), photos,
                 )
                 requete, params = self.curseur.execute.call_args.args
+                self.assertIn("image_annotee", requete)
                 self.assertEqual(params, (12,) if filtre is None else (12, filtre))
                 self.assertEqual("AND type_photo = %s" in requete, filtre is not None)
+
+    def test_remplacement_photo_apres_efface_ancienne_annotation(self):
+        self.storage.ajouter_photos_analyse(12, [{
+            "type_photo": "ecran",
+            "image_data": b"nouvelle photo",
+            "image_type": "image/jpeg",
+        }])
+        requete = self.curseur.execute.call_args.args[0]
+        self.assertIn("image_annotee = NULL", requete)
 
     def test_liste_entites_ordonnee_avec_noms_et_identifiants(self):
         entites = [{"id": 1, "nom": "ULCO"}]
@@ -105,6 +115,45 @@ class PostgresAnalyseTest(TestCase):
         requete, params = self.curseur.execute.call_args.args
         self.assertIn("RETURNING id_rapport", requete)
         self.assertEqual(params, (12, "rapport", "humain"))
+
+    def test_archive_les_photos_et_promeut_les_photos_apres(self):
+        self.curseur.fetchone.return_value = {"id_rapport": 23}
+        photos = [
+            {
+                "type_photo": "ecran",
+                "est_avant": True,
+                "image_data": b"avant",
+                "image_type": "image/jpeg",
+            },
+            {
+                "type_photo": "ecran",
+                "est_avant": False,
+                "image_data": b"apres",
+                "image_type": "image/jpeg",
+            },
+        ]
+
+        self.assertEqual(
+            self.storage.enregistrer_analyse(12, "rapport", photos, True), 23,
+        )
+
+        requetes = [appel.args for appel in self.curseur.execute.call_args_list]
+        self.assertIn("INSERT INTO photos_rapports", requetes[1][0])
+        self.assertEqual(requetes[1][1], (23, "ecran", True, b"avant", "image/jpeg"))
+        self.assertIn("INSERT INTO photos_rapports", requetes[2][0])
+        self.assertEqual(requetes[2][1], (23, "ecran", False, b"apres", "image/jpeg"))
+        self.assertIn("DELETE FROM photos_materiels", requetes[3][0])
+        self.assertIn("UPDATE photos_materiels", requetes[4][0])
+        self.assertIn("image_annotee = NULL", requetes[4][0])
+
+    def test_charge_les_photos_archivees_avec_le_rapport(self):
+        photos = [{"type_photo": "ecran", "est_avant": True}]
+        self.curseur.fetchall.return_value = photos
+
+        self.assertEqual(self.storage.lister_photos_rapport(23), photos)
+        requete, parametres = self.curseur.execute.call_args.args
+        self.assertIn("FROM photos_rapports", requete)
+        self.assertEqual(parametres, (23,))
 
     def test_convertit_les_erreurs_postgres(self):
         self.storage._connexion.side_effect = psycopg.OperationalError("indisponible")
@@ -162,7 +211,7 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
         with Image.open(BytesIO(contenu)) as annotee:
             self.assertEqual(annotee.format, "PNG")
             self.assertEqual(annotee.getpixel((1, 1)), (255, 0, 0))
-            self.assertNotEqual(annotee.getpixel((1, 1)), annotee.getpixel((6, 6)))
+            self.assertEqual(annotee.getpixel((6, 6)), (255, 0, 0))
         self.assertEqual(resultat["image_annotee"], "enregistrée en base")
 
     async def test_aucune_paire_ne_declenche_pas_ollama(self):
@@ -179,6 +228,15 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
             resultat = await analyser_materiel(12, "ecran", storage=storage)
         storage.recuperer_photos_comparaison.assert_called_once_with(12, "ecran")
         vlm.assert_not_called()
+        self.assertIn("Aucune photo commune", resultat)
+
+    async def test_analyse_utilise_les_photos_deja_chargees(self):
+        storage = Mock(spec=Storage)
+        with patch("src.suivi_pret.ollama_client.ia_comparaison.get_settings"):
+            resultat = await analyser_materiel(
+                12, storage=storage, photos_comparaison=[],
+            )
+        storage.recuperer_photos_comparaison.assert_not_called()
         self.assertIn("Aucune photo commune", resultat)
 
     async def test_erreur_de_lecture_remonte_depuis_le_thread(self):

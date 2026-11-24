@@ -1,10 +1,11 @@
 """Tests de la consultation Gradio, sans connexion à la base."""
 
+import asyncio
 from io import BytesIO
 from unittest import TestCase
-from unittest.mock import call, create_autospec, patch
+from unittest.mock import AsyncMock, call, create_autospec, patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from src.suivi_pret.service import SuiviPretService
 from src.suivi_pret.storage import StorageError
@@ -57,6 +58,101 @@ class ConsultationMaterielTest(TestCase):
         self.assertEqual(photos[:3], (None,) * 3)
         self.assertEqual(photos[3].size, (20, 10))
         self.assertEqual(photos[4:], (None,) * 2)
+
+    def test_archive_la_photo_apres_avec_son_annotation_bbox(self):
+        photo = {
+            "type_photo": "ecran",
+            "est_avant": False,
+            "image_data": b"image originale",
+            "image_annotee": b"image annotee",
+            "image_type": "image/jpeg",
+        }
+
+        archive = ui.photos_pour_rapport([photo])
+
+        self.assertEqual(archive[0]["image_data"], b"image annotee")
+        self.assertEqual(archive[0]["image_type"], "image/png")
+        self.assertEqual(photo["image_data"], b"image originale")
+
+    def test_affiche_les_images_du_rapport_dans_les_colonnes_avant_apres(self):
+        avant = BytesIO()
+        apres_annotee = BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(avant, format="PNG")
+        Image.new("RGB", (10, 10), "red").save(apres_annotee, format="PNG")
+
+        photos_avant, photos_apres = ui.photos_rapport_par_etat([
+            {
+                "type_photo": "ecran",
+                "est_avant": True,
+                "image_data": avant.getvalue(),
+            },
+            {
+                "type_photo": "ecran",
+                "est_avant": False,
+                "image_data": apres_annotee.getvalue(),
+            },
+        ])
+
+        self.assertEqual(photos_avant[2].getpixel((5, 5)), (0, 0, 255))
+        self.assertEqual(photos_apres[2].getpixel((5, 5)), (255, 0, 0))
+
+    def test_archive_et_affiche_la_photo_annotee_apres_analyse(self):
+        avant = BytesIO()
+        apres = BytesIO()
+        annotee = BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(avant, format="PNG")
+        Image.new("RGB", (10, 10), "white").save(apres, format="PNG")
+        image_annotee = Image.new("RGB", (10, 10), "white")
+        ImageDraw.Draw(image_annotee).rectangle(
+            (1, 1, 5, 5), outline=(255, 0, 0), width=4,
+        )
+        image_annotee.save(annotee, format="PNG")
+
+        photos_initiales = [
+            {
+                "type_photo": "ecran",
+                "est_avant": True,
+                "image_data": avant.getvalue(),
+                "image_type": "image/png",
+            },
+            {
+                "type_photo": "ecran",
+                "est_avant": False,
+                "image_data": apres.getvalue(),
+                "image_type": "image/png",
+                "image_annotee": None,
+            },
+        ]
+        photos_apres_analyse = [
+            photos_initiales[0],
+            {
+                **photos_initiales[1],
+                "image_annotee": annotee.getvalue(),
+            },
+        ]
+        self.service.recuperer_photos_comparaison.side_effect = [
+            photos_initiales, photos_apres_analyse,
+        ]
+        self.service.storage = object()
+        self.service.enregistrer_analyse.return_value = 23
+        self.service.lister_rapports.return_value = []
+        self.service.lister_photos_rapport.side_effect = (
+            lambda _: self.service.enregistrer_analyse.call_args.args[2]
+        )
+
+        with patch.object(
+            ui, "analyser_materiel", new=AsyncMock(return_value="Zone ecran : rayure"),
+        ):
+            resultat = asyncio.run(ui.lancer_analyse(42, *([None] * 12)))
+
+        photos_archivees = self.service.enregistrer_analyse.call_args.args[2]
+        photo_apres_archivee = next(
+            photo for photo in photos_archivees if not photo["est_avant"]
+        )
+        self.assertEqual(photo_apres_archivee["image_data"], annotee.getvalue())
+        self.assertEqual(resultat[5].getpixel((5, 5)), (0, 0, 255))
+        self.assertEqual(resultat[11].getpixel((1, 1)), (255, 0, 0))
+        self.assertEqual(resultat[18][1][0].getpixel((1, 1)), (255, 0, 0))
 
     def test_champs_optionnels_absents_et_valeur_zero(self):
         self.materiel.update(modele=None, annee=0, remarque=None)
