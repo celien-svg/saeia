@@ -107,7 +107,7 @@ class PostgresStorage(Storage):
     ) -> list[dict[str, Any]]:
         """Charge les photos avant/après, éventuellement pour une seule zone."""
         requete = (
-            "SELECT id_photo, type_photo, image_data, image_type, est_avant "
+            "SELECT id_photo, type_photo, image_data, image_type, est_avant, image_annotee "
             "FROM photos_materiels WHERE id_materiel = %s"
         )
         parametres: tuple[Any, ...] = (materiel_id,)
@@ -136,7 +136,11 @@ class PostgresStorage(Storage):
             raise StorageError("Impossible d'enregistrer l'image annotée en base.") from exc
 
     def enregistrer_rapport(
-        self, materiel_id: int, contenu: str, origine: str = "ia",
+        self,
+        materiel_id: int,
+        contenu: str,
+        origine: str = "ia",
+        photos_rapport_id: int | None = None,
     ) -> int:
         try:
             with self._connexion() as conn, conn.cursor() as cur:
@@ -146,9 +150,96 @@ class PostgresStorage(Storage):
                        RETURNING id_rapport""",
                     (materiel_id, contenu, origine),
                 )
-                return cur.fetchone()["id_rapport"]
+                rapport_id = cur.fetchone()["id_rapport"]
+                if photos_rapport_id is not None:
+                    cur.execute(
+                        """INSERT INTO photos_rapports (
+                               id_rapport, type_photo, est_avant, image_data, image_type
+                           )
+                           SELECT %s, type_photo, est_avant, image_data, image_type
+                           FROM photos_rapports
+                           WHERE id_rapport = %s""",
+                        (rapport_id, photos_rapport_id),
+                    )
+                return rapport_id
         except psycopg.Error as exc:
             raise StorageError("Impossible d'enregistrer le rapport IA.") from exc
+
+    def enregistrer_analyse(
+        self,
+        materiel_id: int,
+        contenu: str,
+        photos: list[dict[str, Any]],
+        promouvoir_photos: bool,
+    ) -> int:
+        """Enregistre le résultat et les photos comparées dans une seule transaction."""
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO rapports_ia (id_materiel, contenu, origine)
+                       VALUES (%s, %s, 'ia')
+                       RETURNING id_rapport""",
+                    (materiel_id, contenu),
+                )
+                rapport_id = cur.fetchone()["id_rapport"]
+
+                for photo in photos:
+                    cur.execute(
+                        """INSERT INTO photos_rapports (
+                               id_rapport, type_photo, est_avant, image_data, image_type
+                           ) VALUES (%s, %s, %s, %s, %s)""",
+                        (
+                            rapport_id,
+                            photo["type_photo"],
+                            photo["est_avant"],
+                            photo["image_data"],
+                            photo["image_type"],
+                        ),
+                    )
+
+                if promouvoir_photos:
+                    types_comparables = {
+                        photo["type_photo"]
+                        for photo in photos
+                        if not photo["est_avant"]
+                        and any(
+                            autre["type_photo"] == photo["type_photo"]
+                            and autre["est_avant"]
+                            for autre in photos
+                        )
+                    }
+                    for type_photo in types_comparables:
+                        cur.execute(
+                            """DELETE FROM photos_materiels
+                               WHERE id_materiel = %s AND type_photo = %s
+                                 AND est_avant = TRUE""",
+                            (materiel_id, type_photo),
+                        )
+                        cur.execute(
+                            """UPDATE photos_materiels
+                               SET est_avant = TRUE, image_annotee = NULL
+                               WHERE id_materiel = %s AND type_photo = %s
+                                 AND est_avant = FALSE""",
+                            (materiel_id, type_photo),
+                        )
+
+                return rapport_id
+        except psycopg.Error as exc:
+            raise StorageError("Impossible d'enregistrer l'analyse et ses photos.") from exc
+
+    def lister_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        try:
+            with self._connexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """SELECT type_photo, est_avant, image_data, image_type
+                       FROM photos_rapports
+                       WHERE id_rapport = %s
+                       ORDER BY type_photo, est_avant DESC""",
+                    (rapport_id,),
+                )
+                return cur.fetchall()
+        except psycopg.Error as exc:
+            raise StorageError("Impossible de récupérer les photos du rapport.") from exc
 
     def enregistrer_validation_humaine(
         self,
@@ -341,7 +432,8 @@ class PostgresStorage(Storage):
                            ) VALUES (%s, %s, FALSE, %s, %s)
                            ON CONFLICT (id_materiel, type_photo, est_avant)
                            DO UPDATE SET image_data = EXCLUDED.image_data,
-                                         image_type = EXCLUDED.image_type""",
+                                         image_type = EXCLUDED.image_type,
+                                         image_annotee = NULL""",
                         (
                             materiel_id,
                             photo["type_photo"],

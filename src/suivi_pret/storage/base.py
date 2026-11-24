@@ -47,9 +47,27 @@ class Storage(ABC):
         raise NotImplementedError
 
     def enregistrer_rapport(
-        self, materiel_id: int, contenu: str, origine: str = "ia",
+        self,
+        materiel_id: int,
+        contenu: str,
+        origine: str = "ia",
+        photos_rapport_id: int | None = None,
     ) -> int:
         """Enregistre un rapport et indique s'il a été corrigé par un humain."""
+        raise NotImplementedError
+
+    def enregistrer_analyse(
+        self,
+        materiel_id: int,
+        contenu: str,
+        photos: list[dict[str, Any]],
+        promouvoir_photos: bool,
+    ) -> int:
+        """Enregistre le rapport et ses photos, puis actualise les références si possible."""
+        raise NotImplementedError
+
+    def lister_photos_rapport(self, rapport_id: int) -> list[dict[str, Any]]:
+        """Retourne les photos avant/après archivées avec un rapport."""
         raise NotImplementedError
 
     def enregistrer_validation_humaine(

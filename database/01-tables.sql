@@ -62,7 +62,18 @@ CREATE TABLE IF NOT EXISTS rapports_ia (
     cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Conserver les décisions humaines associées aux rapports IA
+-- 6. Conserver les photos exactes utilisées pour chaque rapport
+CREATE TABLE IF NOT EXISTS photos_rapports (
+    id_photo_rapport SERIAL PRIMARY KEY,
+    id_rapport INT NOT NULL REFERENCES rapports_ia(id_rapport) ON DELETE CASCADE,
+    type_photo VARCHAR(50) NOT NULL,
+    est_avant BOOLEAN NOT NULL,
+    image_data BYTEA NOT NULL,
+    image_type VARCHAR(50) NOT NULL,
+    UNIQUE (id_rapport, type_photo, est_avant)
+);
+
+-- 7. Conserver les décisions humaines associées aux rapports IA
 CREATE TABLE IF NOT EXISTS validations_humaines (
     id_validation SERIAL PRIMARY KEY,
     id_rapport INT NOT NULL REFERENCES rapports_ia(id_rapport) ON DELETE CASCADE,
