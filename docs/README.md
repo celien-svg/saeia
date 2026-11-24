@@ -14,6 +14,7 @@ comparaison d'images par un modèle de vision Ollama.
 | [Suivi sprint 1](./monitoring/sprint-01.md) | Photos de restitution et comparaison IA |
 | [Suivi sprint 2](./monitoring/sprint-02.md) | Rapports, validations humaines et fiabilisation |
 | [Suivi sprint 3](./monitoring/sprint-03.md) | Ergonomie et démonstration |
+| [Suivi sprint 4](./monitoring/sprint-04.md) | Consultation, correction des rapports, responsive et documentation |
 
 ## Parcours fonctionnel actuel
 
