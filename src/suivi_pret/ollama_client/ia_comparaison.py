@@ -1,6 +1,7 @@
 import json
 import asyncio
 import math
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -27,6 +28,24 @@ class ZoneDetection(TypedDict):
 
 class ReponseVLM(TypedDict):
     zones: list[ZoneDetection]
+
+
+@dataclass(frozen=True, slots=True)
+class MetriquesAnalyse:
+    """Compteurs agrégés renvoyés par Ollama pour une analyse."""
+
+    jetons_entree: int | None = None
+    jetons_generes: int | None = None
+    duree_generation_ns: int | None = None
+    duree_totale_ns: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResultatAnalyse:
+    """Rapport et métriques associés à une analyse de matériel."""
+
+    rapport: str
+    metriques: MetriquesAnalyse
 
 
 def _refuser_constante_json(valeur: str) -> None:
@@ -130,6 +149,13 @@ async def analyser_categorie(
         print(f"  Erreur pour la zone '{zone}' : {exc}")
         return {"zone": zone, "error": str(exc), "zones": []}
 
+    metriques = {
+        "jetons_entree": result.prompt_eval_count,
+        "jetons_generes": result.eval_count,
+        "duree_generation_ns": result.eval_duration,
+        "duree_totale_ns": result.total_duration,
+    }
+
     try:
         parsed = valider_reponse_json(
             result.response,
@@ -143,9 +169,11 @@ async def analyser_categorie(
             "zone_analysee": zone,
             "error": str(exc),
             "zones": [],
+            "metriques": metriques,
         }
 
     parsed["zone_analysee"] = zone
+    parsed["metriques"] = metriques
     if parsed.get("zones"):
         image_annotee = affichage_defaut(
             after_photo["image_data"],
@@ -192,7 +220,7 @@ async def analyser_materiel(
     *,
     storage: Storage,
     photos_comparaison: list[dict[str, Any]] | None = None,
-) -> str:
+) -> ResultatAnalyse:
     """Analyse les photos d'un matériel et retourne le rapport affichable."""
     settings = get_settings()
     if photos_comparaison is None:
@@ -207,7 +235,10 @@ async def analyser_materiel(
         ]
     categories = construire_categories(photos_comparaison)
     if not categories:
-        return "Aucune photo commune trouvée pour ce matériel."
+        return ResultatAnalyse(
+            "Aucune photo commune trouvée pour ce matériel.",
+            MetriquesAnalyse(),
+        )
 
     rapports = []
     async with OllamaVLM(
@@ -223,7 +254,29 @@ async def analyser_materiel(
                 )
             )
     resultats = [conversion_texte(rapport) for rapport in rapports]
-    return "\n\n".join(resultats)
+    metriques = [
+        rapport["metriques"]
+        for rapport in rapports
+        if "metriques" in rapport
+    ]
+
+    def sommer(cle: str) -> int | None:
+        valeurs = [
+            valeur
+            for metrique in metriques
+            if isinstance((valeur := metrique[cle]), int)
+        ]
+        return sum(valeurs) if valeurs else None
+
+    return ResultatAnalyse(
+        rapport="\n\n".join(resultats),
+        metriques=MetriquesAnalyse(
+            jetons_entree=sommer("jetons_entree"),
+            jetons_generes=sommer("jetons_generes"),
+            duree_generation_ns=sommer("duree_generation_ns"),
+            duree_totale_ns=sommer("duree_totale_ns"),
+        ),
+    )
 
 def affichage_defaut(image_data: bytes, zones: list[dict[str, Any]],)-> bytes:
     """Dessine les BBoxes des défauts avec une couleur distincte."""

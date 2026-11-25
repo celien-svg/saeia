@@ -25,7 +25,13 @@ class OllamaVLMAsyncTest(IsolatedAsyncioTestCase):
                 ],
             )
             self.assertFalse(payload["stream"])
-            return httpx.Response(200, json={"response": '{"zones": []}'})
+            return httpx.Response(200, json={
+                "response": '{"zones": []}',
+                "eval_duration": 2_000_000_000,
+                "total_duration": 3_000_000_000,
+                "prompt_eval_count": 120,
+                "eval_count": 15,
+            })
 
         async with OllamaVLM(
             "http://ollama.test",
@@ -39,6 +45,10 @@ class OllamaVLMAsyncTest(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(resultat.response, '{"zones": []}')
+        self.assertEqual(resultat.eval_duration, 2_000_000_000)
+        self.assertEqual(resultat.total_duration, 3_000_000_000)
+        self.assertEqual(resultat.prompt_eval_count, 120)
+        self.assertEqual(resultat.eval_count, 15)
 
     async def test_transforme_une_erreur_http_en_erreur_ollama(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:

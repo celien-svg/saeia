@@ -201,6 +201,10 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
                     "gravite": "marquee", "bbox": [6, 6, 9, 9],
                 },
             ]}),
+            prompt_eval_count=None,
+            eval_count=None,
+            eval_duration=None,
+            total_duration=None,
         ))
         resultat = await analyser_categorie(
             client, categorie, "modele-test", storage=storage,
@@ -228,7 +232,7 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
             resultat = await analyser_materiel(12, "ecran", storage=storage)
         storage.recuperer_photos_comparaison.assert_called_once_with(12, "ecran")
         vlm.assert_not_called()
-        self.assertIn("Aucune photo commune", resultat)
+        self.assertIn("Aucune photo commune", resultat.rapport)
 
     async def test_analyse_utilise_les_photos_deja_chargees(self):
         storage = Mock(spec=Storage)
@@ -237,7 +241,7 @@ class AnalyseStockageTest(IsolatedAsyncioTestCase):
                 12, storage=storage, photos_comparaison=[],
             )
         storage.recuperer_photos_comparaison.assert_not_called()
-        self.assertIn("Aucune photo commune", resultat)
+        self.assertIn("Aucune photo commune", resultat.rapport)
 
     async def test_erreur_de_lecture_remonte_depuis_le_thread(self):
         storage = Mock(spec=Storage)

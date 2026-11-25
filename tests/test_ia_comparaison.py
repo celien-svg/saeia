@@ -4,13 +4,14 @@ import json
 from io import BytesIO
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from PIL import Image
 
 from src.suivi_pret.ollama_client.ia_comparaison import (
     GRAVITES_AUTORISEES,
     PROMPT_TEMPLATE,
     analyser_categorie,
+    analyser_materiel,
     valider_reponse_json,
 )
 
@@ -165,9 +166,71 @@ class ValidationJsonTest(TestCase):
 
 
 class AnalyseCategorieTest(IsolatedAsyncioTestCase):
+    async def test_analyser_materiel_agrege_les_metriques_des_zones(self) -> None:
+        client = Mock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=None)
+        client.compare_images = AsyncMock(side_effect=[
+            SimpleNamespace(
+                response='{"zones": []}',
+                prompt_eval_count=100,
+                eval_count=10,
+                eval_duration=2_000_000_000,
+                total_duration=3_000_000_000,
+            ),
+            SimpleNamespace(
+                response='{"zones": []}',
+                prompt_eval_count=200,
+                eval_count=20,
+                eval_duration=4_000_000_000,
+                total_duration=5_000_000_000,
+            ),
+        ])
+        photos = []
+        for type_photo in ("ecran", "clavier"):
+            photos.extend([
+                {
+                    "type_photo": type_photo,
+                    "est_avant": True,
+                    "image_data": image_png(),
+                },
+                {
+                    "type_photo": type_photo,
+                    "est_avant": False,
+                    "image_data": image_png(),
+                    "id_photo": type_photo,
+                },
+            ])
+
+        with (
+            patch(
+                "src.suivi_pret.ollama_client.ia_comparaison.get_settings",
+                return_value=SimpleNamespace(
+                    OLLAMA_HOST="http://ollama.test",
+                    OLLAMA_VLM_MODEL="test-model",
+                ),
+            ),
+            patch(
+                "src.suivi_pret.ollama_client.ia_comparaison.OllamaVLM",
+                return_value=client,
+            ),
+        ):
+            resultat = await analyser_materiel(1, storage=Mock(), photos_comparaison=photos)
+
+        self.assertEqual(resultat.metriques.jetons_entree, 300)
+        self.assertEqual(resultat.metriques.jetons_generes, 30)
+        self.assertEqual(resultat.metriques.duree_generation_ns, 6_000_000_000)
+        self.assertEqual(resultat.metriques.duree_totale_ns, 8_000_000_000)
+
     async def test_analyser_categorie_retourne_une_erreur_controlee(self) -> None:
         client = Mock()
-        client.compare_images = AsyncMock(return_value=SimpleNamespace(response="[]"))
+        client.compare_images = AsyncMock(return_value=SimpleNamespace(
+            response="[]",
+            prompt_eval_count=None,
+            eval_count=None,
+            eval_duration=None,
+            total_duration=None,
+        ))
         categorie = {
             "zone": "ecran",
             "before": {"image_data": b"avant"},
@@ -191,7 +254,7 @@ class AnalyseCategorieTest(IsolatedAsyncioTestCase):
                 "gravite": "legere",
                 "bbox": [10, 10, 601, 100],
             }],
-        })))
+        }), prompt_eval_count=None, eval_count=None, eval_duration=None, total_duration=None))
         storage = Mock()
         categorie = {
             "zone": "ecran",

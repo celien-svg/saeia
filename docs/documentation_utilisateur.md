@@ -164,6 +164,11 @@ l'application :
 6. après une analyse complète, utilise les photos après comme nouvelles
    photos de référence pour la prochaine restitution.
 
+Les compteurs affichés sous le rapport indiquent les jetons d'entrée et
+générés ainsi que le temps de génération et le temps total des appels Ollama.
+Pour une analyse de plusieurs zones, ces valeurs sont additionnées. Elles
+restent séparées du rapport enregistré.
+
 Les anciennes photos et celles de la restitution restent associées au rapport
 historique. Vous pouvez les revoir en sélectionnant un rapport dans
 **Photos d'un rapport précédent**. Une analyse partielle est conservée dans

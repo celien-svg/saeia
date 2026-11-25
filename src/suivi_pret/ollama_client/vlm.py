@@ -20,6 +20,7 @@ class OllamaGenerateResult:
     done: bool | None = None
     total_duration: int | None = None
     load_duration: int | None = None
+    eval_duration: int | None = None
     prompt_eval_count: int | None = None
     eval_count: int | None = None
 
@@ -80,6 +81,7 @@ class OllamaVLM(BaseModelEndpoint):
             done=payload.get("done") if isinstance(payload.get("done"), bool) else None,
             total_duration=payload.get("total_duration") if isinstance(payload.get("total_duration"), int) else None,
             load_duration=payload.get("load_duration") if isinstance(payload.get("load_duration"), int) else None,
+            eval_duration=payload.get("eval_duration") if isinstance(payload.get("eval_duration"), int) else None,
             prompt_eval_count=payload.get("prompt_eval_count") if isinstance(payload.get("prompt_eval_count"), int) else None,
             eval_count=payload.get("eval_count") if isinstance(payload.get("eval_count"), int) else None,
         )
