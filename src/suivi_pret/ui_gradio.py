@@ -153,6 +153,41 @@ def ajouter_photos_analyse(id_materiel, *photos):
     return " Photos enregistrées. La comparaison par l'IA est disponible ci-dessous."
 
 
+def afficher_metriques_analyse(metriques):
+    """Formate les compteurs Ollama sans les mélanger au rapport archivé."""
+    jetons_entree = (
+        str(metriques.jetons_entree)
+        if metriques.jetons_entree is not None
+        else "indisponible"
+    )
+    jetons_generes = (
+        str(metriques.jetons_generes)
+        if metriques.jetons_generes is not None
+        else "indisponible"
+    )
+    jetons_total = (
+        str(metriques.jetons_entree + metriques.jetons_generes)
+        if (
+            metriques.jetons_entree is not None
+            and metriques.jetons_generes is not None
+        )
+        else "indisponible"
+    )
+
+    def duree_secondes(duree_ns):
+        if duree_ns is None:
+            return "indisponible"
+        return f"{duree_ns / 1_000_000_000:.2f}".replace(".", ",") + " s"
+
+    return (
+        f"**Jetons :** {jetons_entree} entrée · "
+        f"{jetons_generes} générés · {jetons_total} au total  \n"
+        f"**Temps de génération :** "
+        f"{duree_secondes(metriques.duree_generation_ns)} · "
+        f"**Temps total Ollama :** {duree_secondes(metriques.duree_totale_ns)}"
+    )
+
+
 async def lancer_analyse(id_materiel, *photos):
     """Compare, archive et promeut les nouvelles photos après une analyse réussie."""
     if id_materiel is None:
@@ -173,14 +208,16 @@ async def lancer_analyse(id_materiel, *photos):
         photos_comparaison = await asyncio.to_thread(
             service.recuperer_photos_comparaison, id_materiel,
         )
-        rapport = await analyser_materiel(
+        resultat_analyse = await analyser_materiel(
             id_materiel,
             storage=service.storage,
             photos_comparaison=photos_comparaison,
         )
+        rapport = resultat_analyse.rapport
+        metriques = afficher_metriques_analyse(resultat_analyse.metriques)
         if rapport.startswith("Aucune photo commune trouvée"):
             return (
-                rapport, "", None,
+                rapport, "", "", None,
                 *photos_en_data_uri(await asyncio.to_thread(
                     service.recuperer_photos, id_materiel,
                 )),
@@ -235,7 +272,7 @@ async def lancer_analyse(id_materiel, *photos):
             else "Analyse partielle : rapport archivé, photos de référence inchangées."
         )
         return (
-            rapport, rapport, rapport_id,
+            rapport, metriques, rapport, rapport_id,
             *photos_avant,
             *photos_apres_archivees,
             statut,
@@ -491,6 +528,7 @@ def ouvrir_analyse(id_materiel, nom):
         "",
         rapport["contenu"] if rapport else "",
         historique,
+        "",
         gr.update(
             choices=options_rapports(rapports),
             value=rapport_id,
@@ -514,6 +552,7 @@ def retour_liste_depuis_analyse():
         "",
         "",  # zone réponse IA
         "Aucun rapport sauvegardé pour cet ordinateur.",
+        "",  # métriques de l'analyse
         gr.update(choices=[], value=None),
         [],
         "",  # statut sauvegarde
@@ -1365,6 +1404,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                     lines=6,
                     placeholder="La réponse de l'IA apparaîtra ici après l'analyse des photos avant/après...",
                 )
+                metriques_analyse = gr.Markdown()
                 liste_rapports = gr.Markdown(elem_classes="historique-rapports")
                 selecteur_rapport_historique = gr.Dropdown(
                     label="Photos d'un rapport précédent",
@@ -1504,6 +1544,7 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
                                     rapport_courant_id, titre_analyse,
                                     *anciennes_images, *nouvelles_images,
                                     statut_photos_analyse, reponse_ia, liste_rapports,
+                                    metriques_analyse,
                                     selecteur_rapport_historique, galerie_rapport,
                                     statut_validation,
                                 ],
@@ -1656,7 +1697,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
             analyse_id_materiel, rapport_ia_original, rapport_courant_id, titre_analyse,
             *anciennes_images, *nouvelles_images,
             statut_photos_analyse, reponse_ia, liste_rapports,
-            selecteur_rapport_historique, galerie_rapport, statut_validation,
+            metriques_analyse, selecteur_rapport_historique,
+            galerie_rapport, statut_validation,
         ],
     )
 
@@ -1670,7 +1712,8 @@ with gr.Blocks(title="Gestion des ordinateurs") as demo:
         fn=lancer_analyse,
         inputs=[analyse_id_materiel, *anciennes_images, *nouvelles_images],
         outputs=[
-            reponse_ia, rapport_ia_original, rapport_courant_id,
+            reponse_ia, metriques_analyse, rapport_ia_original,
+            rapport_courant_id,
             *anciennes_images, *nouvelles_images,
             statut_photos_analyse, liste_rapports,
             selecteur_rapport_historique, galerie_rapport, statut_validation,

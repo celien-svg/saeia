@@ -7,6 +7,10 @@ from unittest.mock import AsyncMock, call, create_autospec, patch
 
 from PIL import Image, ImageDraw
 
+from src.suivi_pret.ollama_client.ia_comparaison import (
+    MetriquesAnalyse,
+    ResultatAnalyse,
+)
 from src.suivi_pret.service import SuiviPretService
 from src.suivi_pret.storage import StorageError
 
@@ -141,7 +145,17 @@ class ConsultationMaterielTest(TestCase):
         )
 
         with patch.object(
-            ui, "analyser_materiel", new=AsyncMock(return_value="Zone ecran : rayure"),
+            ui,
+            "analyser_materiel",
+            new=AsyncMock(return_value=ResultatAnalyse(
+                rapport="Zone ecran : rayure",
+                metriques=MetriquesAnalyse(
+                    jetons_entree=12,
+                    jetons_generes=4,
+                    duree_generation_ns=1_000_000_000,
+                    duree_totale_ns=2_000_000_000,
+                ),
+            )),
         ):
             resultat = asyncio.run(ui.lancer_analyse(42, *([None] * 12)))
 
@@ -150,9 +164,10 @@ class ConsultationMaterielTest(TestCase):
             photo for photo in photos_archivees if not photo["est_avant"]
         )
         self.assertEqual(photo_apres_archivee["image_data"], annotee.getvalue())
-        self.assertEqual(resultat[5].getpixel((5, 5)), (0, 0, 255))
-        self.assertEqual(resultat[11].getpixel((1, 1)), (255, 0, 0))
-        self.assertEqual(resultat[18][1][0].getpixel((1, 1)), (255, 0, 0))
+        self.assertEqual(resultat[6].getpixel((5, 5)), (0, 0, 255))
+        self.assertEqual(resultat[12].getpixel((1, 1)), (255, 0, 0))
+        self.assertIn("16 au total", resultat[1])
+        self.assertEqual(resultat[19][1][0].getpixel((1, 1)), (255, 0, 0))
 
     def test_champs_optionnels_absents_et_valeur_zero(self):
         self.materiel.update(modele=None, annee=0, remarque=None)
